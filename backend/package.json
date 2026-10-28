@@ -7,7 +7,8 @@
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed:superadmin": "ts-node src/scripts/seedSuperAdmin.ts"
+    "seed:superadmin": "ts-node src/scripts/seedSuperAdmin.ts",
+    "test": "node --require ts-node/register --test test/cronAuth.test.ts test/reminders.test.ts test/accounts-and-payments.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -16,6 +17,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.13.0",
     "mongoose": "^8.5.0",

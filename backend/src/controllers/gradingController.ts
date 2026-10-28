@@ -3,6 +3,7 @@ import { AuthedRequest } from "../middleware/auth";
 import Exam from "../models/Exam";
 import ExamAttempt from "../models/ExamAttempt";
 import Question from "../models/Question";
+import { finalizeExpiredAttempts } from "../services/finalizeExpired";
 
 // Teacher: every ungraded (and already-graded, for review) theory answer
 // across every student's attempt at one exam.
@@ -15,6 +16,8 @@ export async function getGradingQueue(req: AuthedRequest, res: Response) {
     return res.json({ examTitle: exam.title, hasTheoryQuestions: false, students: [] });
   }
   const theoryById = new Map(theoryQuestions.map((q) => [q._id.toString(), q]));
+
+  await finalizeExpiredAttempts({ examIds: [exam._id] });
 
   const attempts = await ExamAttempt.find({
     examId: exam._id,

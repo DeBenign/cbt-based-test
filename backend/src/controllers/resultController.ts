@@ -4,6 +4,7 @@ import ExamAttempt from "../models/ExamAttempt";
 import Exam from "../models/Exam";
 import Question from "../models/Question";
 import User from "../models/User";
+import { finalizeExpiredAttempts } from "../services/finalizeExpired";
 
 const RESULTS_DELAY_MS = 60 * 60 * 1000; // 1 hour, applies to student, teacher, and admin alike
 
@@ -27,6 +28,7 @@ export async function getMyResult(req: AuthedRequest, res: Response) {
     });
   }
 
+  await finalizeExpiredAttempts({ examIds: [exam._id] });
   const attempt = await ExamAttempt.findOne({
     examId: req.params.examId,
     studentId: req.user!.userId
@@ -60,6 +62,9 @@ export async function getExamResults(req: AuthedRequest, res: Response) {
       unlockAt: resultsUnlockAt(exam)
     });
   }
+
+  // Close out abandoned attempts first so no one's result is missing.
+  await finalizeExpiredAttempts({ examIds: [exam._id] });
 
   const attempts = await ExamAttempt.find({
     examId: exam._id,
@@ -105,6 +110,9 @@ export async function exportExamResultsCsv(req: AuthedRequest, res: Response) {
       unlockAt: resultsUnlockAt(exam)
     });
   }
+
+  // Close out abandoned attempts first so no one's result is missing.
+  await finalizeExpiredAttempts({ examIds: [exam._id] });
 
   const attempts = await ExamAttempt.find({
     examId: exam._id,

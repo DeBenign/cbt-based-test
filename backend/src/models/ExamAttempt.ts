@@ -74,4 +74,9 @@ const examAttemptSchema = new Schema<IExamAttempt>({
   gradedBy: { type: Schema.Types.ObjectId, ref: "User" }
 });
 
+// The abandoned-attempt sweep looks for in-progress attempts past their deadline;
+// the per-exam index serves results, grading and review queries.
+examAttemptSchema.index({ status: 1, serverEndTime: 1 });
+examAttemptSchema.index({ examId: 1, status: 1 });
+
 export default model<IExamAttempt>("ExamAttempt", examAttemptSchema);

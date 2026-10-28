@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Card from "../components/Card";
@@ -10,13 +10,14 @@ export default function Login() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => sessionStorage.getItem("cbt_notice"));
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    sessionStorage.removeItem("cbt_notice");
     setError(null);
     setLoading(true);
     try {
@@ -83,6 +84,9 @@ export default function Login() {
         </form>
         <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 16, marginBottom: 0 }}>
           Don't have an account? Ask your school admin to set one up for you.
+        </p>
+        <p style={{ textAlign: "center", fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+          <Link to="/forgot-password">Forgot password?</Link>
         </p>
       </Card>
     </PageShell>

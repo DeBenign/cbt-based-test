@@ -6,6 +6,8 @@ import RequireRole from "./components/RequireRole";
 import RequireExactRole from "./components/RequireExactRole";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Setup from "./pages/Setup";
 import QuestionBank from "./pages/QuestionBank";
 import ExamBuilder from "./pages/ExamBuilder";
@@ -17,6 +19,7 @@ import UserManagement from "./pages/UserManagement";
 import SchoolManagement from "./pages/SchoolManagement";
 import ChangePassword from "./pages/ChangePassword";
 import Billing from "./pages/Billing";
+import Receipt from "./pages/Receipt";
 import Branding from "./pages/Branding";
 import Curriculum from "./pages/Curriculum";
 import AIQuestions from "./pages/AIQuestions";
@@ -33,11 +36,16 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             <Route path="/:role" element={<RequireRole />}>
               <Route element={<AppLayout />}>
                 <Route element={<RequireExactRole allow={["superadmin"]} />}>
                   <Route path="schools" element={<SchoolManagement />} />
+                </Route>
+                <Route element={<RequireExactRole allow={["admin", "superadmin"]} />}>
+                  <Route path="receipt/:paymentId" element={<Receipt />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["admin"]} />}>
                   <Route path="setup" element={<Setup />} />

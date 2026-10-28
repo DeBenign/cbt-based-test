@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, Link } from "react-router-dom";
 import Navbar from "./Navbar";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
@@ -22,13 +22,17 @@ function darken(hex: string, amount = 0.15): string {
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
+const REMINDER_WINDOW_DAYS = 14;
+
 export default function AppLayout() {
   const { user } = useAuth();
+  const [expiry, setExpiry] = useState<{ daysLeft: number; paid: boolean } | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    if (!user) return;
+    // While a temporary password is still in place the server only allows changing it.
+    if (!user || user.mustChangePassword) return;
     api.get("/branding").then((res) => {
       setBranding(res.data);
       if (res.data.primaryColor) {
@@ -36,9 +40,21 @@ export default function AppLayout() {
         document.documentElement.style.setProperty("--accent-hover", darken(res.data.primaryColor));
         document.documentElement.style.setProperty("--bg-accent-muted", `${res.data.primaryColor}1A`);
       }
-    });
+    }).catch(() => { /* branding is cosmetic; the page works without it */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [user?.role, user?.mustChangePassword]);
+
+  // School admins get a heads-up in the app as access nears its end
+  // (the email reminder is a second channel for the same thing).
+  useEffect(() => {
+    if (user?.role !== "admin" || user.mustChangePassword) return;
+    api.get("/billing/status").then((res) => {
+      const d = res.data;
+      if (!d.accessBlocked && d.accessDaysLeft <= REMINDER_WINDOW_DAYS) {
+        setExpiry({ daysLeft: d.accessDaysLeft, paid: !!d.isPaidActive });
+      }
+    }).catch(() => { /* not important enough to interrupt the page */ });
+  }, [user?.role, user?.mustChangePassword]);
 
   // App-wide version of the same online/offline signal TestTaking.tsx
   // already uses during an exam -- here it's just an informational banner,
@@ -64,6 +80,13 @@ export default function AppLayout() {
       {!isOnline && (
         <div style={{ padding: "8px 24px", fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", textAlign: "center" }}>
           You're offline. The app still works, but anything needing a connection — saving, submitting, loading new data — will wait until you're back online.
+        </div>
+      )}
+      {expiry && (
+        <div style={{ padding: "8px 24px", fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", textAlign: "center" }}>
+          Your school's {expiry.paid ? "subscription" : "free trial"}{" "}
+          {expiry.daysLeft <= 1 ? "ends within a day" : `ends in ${expiry.daysLeft} days`}. After that, teachers and students can't sign in.{" "}
+          <Link to="/admin/billing">See how to renew</Link>
         </div>
       )}
       {user && (

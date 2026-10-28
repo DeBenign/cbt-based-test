@@ -68,6 +68,9 @@ Free port 5173, or set `FRONTEND_URL` in `backend/.env` to the address you actua
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Token signing key and lifetime (default `8h`) |
 | `FRONTEND_URL` | Exact URL of the deployed frontend, no trailing slash (CORS). `http://localhost:5173` is always allowed |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | AI question generation. Without a key the feature shows a clear "not switched on" message |
+| `CRON_SECRET` | Random string, 16+ characters. Protects the scheduled job (`/api/v1/cron/maintenance`). Without it the job refuses to run |
+| `RESEND_API_KEY`, `MAIL_FROM` | Email through Resend (forgot-password, expiry reminders). `MAIL_FROM` must be on a domain verified with Resend. Leave empty to keep email features off |
+| `RECEIPT_PREFIX`, `RECEIPT_ISSUER_NAME`, `RECEIPT_ISSUER_CONTACT` | Receipt numbering (default `BMK`) and the name/contact printed on receipts |
 | `PRICE_PER_STUDENT_PER_TERM` | Default fee per student per term, in naira (placeholder: 500) |
 | `MIN_TERM_FEE` | Smallest fee a school pays per term (placeholder: 15000) |
 | `TERM_DAYS` | Length of one paid term of access (default 120 days) |
@@ -94,7 +97,9 @@ After changing any environment variable, redeploy that project. A "Ready" deploy
 - **One payment covers 1–3 terms.** Each term adds `TERM_DAYS` of access, stacked on any time still remaining; the superadmin may instead enter an exact *access until* date to match the school's real term end.
 - **Cash / transfer (current method):** the school pays the platform owner. The superadmin opens **Schools**, expands the school, and records the amount, a unique reference (e.g. a receipt number), the number of terms and an optional label (e.g. `2026/27 Term 1`). Access is restored immediately.
 - **Online (Nomba):** the school admin pays from Billing and a webhook records it. Off until `ONLINE_PAYMENTS_ENABLED=true`.
-- There is no undo for a recorded payment; use a new reference for every payment.
+- **Undo a wrong cash payment:** Schools → expand the school → *Payments* → **Cancel this payment** (reason required). Only the newest cash payment can be cancelled; the school's access date goes back to what it was. The cancelled entry stays in the history, marked *Cancelled*, and its reference/receipt number can be used again for the corrected entry. Online (Nomba) payments are not cancelled here — those need a refund through Nomba.
+- **Receipts:** every payment has a numbered receipt (`BMK-2026-00001`, sequential per year). School admins open it from **Billing → Receipt**; the owner from the school's payment list. *Print / save as PDF* uses the browser's print dialog. Payments recorded before receipts existed get a number the first time one is opened.
+- **Expiry reminders:** school admins are emailed at 14, 7, 3 and 1 days before access ends and once when it has ended (never the same reminder twice; renewing starts a fresh cycle). Admins also see a banner in the app for the last 14 days. The owner can tick *Only schools whose access ends within 30 days* on the Schools page. Emails need `RESEND_API_KEY` + `MAIL_FROM`; the banner works without them.
 
 ## AI questions
 
@@ -127,18 +132,44 @@ answer against the answer key and any integrity events, then:
 
 Every correction needs a reason and is recorded. Activity history is kept for about six months.
 
+## Scheduled job
+
+`backend/vercel.json` runs `GET /api/v1/cron/maintenance` once a day at 03:00 UTC (04:00 in Nigeria). It does two things:
+
+1. **Finalizes abandoned attempts** — anything still *in progress* two minutes past its own deadline (student closed the browser, power cut) is marked auto-submitted and scored. The activity feed shows a "System" line per school. Results, grading and the student's own result page also do this for their exam when opened, so nothing waits for the schedule. The admin *Finalize abandoned attempts* button still works.
+2. **Sends expiry reminders** (see Billing).
+
+Set `CRON_SECRET` on the backend project (Vercel then sends it automatically as `Authorization: Bearer …`). Vercel's free (Hobby) plan allows daily schedules only; on Pro change the schedule in `vercel.json` (e.g. `*/15 * * * *`). To trigger it by hand: `curl -H "Authorization: Bearer $CRON_SECRET" https://<backend>/api/v1/cron/maintenance`.
+
+## Passwords
+
+- **First sign-in:** accounts created in bulk or reset by an admin have a temporary password. The **server** refuses every request except *change password* until a new one is chosen (the app also redirects).
+- **Changing a password signs out every other session** for that account (the current session gets a fresh token). The same happens when an admin resets someone's password.
+- **Forgot password:** *Sign in → Forgot password?* emails a single-use link valid for 30 minutes (only a hash of it is stored; asking again cancels the older link). It works for anyone with a real email address on the account — admins, teachers, and students who were given an email. Students created without one (placeholder address) can't receive email: their teacher/admin resets it. The page gives the same answer whether or not the account exists, and requests are rate-limited. Needs `RESEND_API_KEY` + `MAIL_FROM`; without them the page says so.
+- Minimum length is 4 characters (`MIN_PASSWORD_LENGTH` in `backend/src/utils/password.ts`) — consider raising it.
+
+## Automated tests
+
+`cd backend && npm test` runs unit tests (Node's built-in runner, no database needed) for the cron check, expiry-reminder scheduling, payment-undo rules, receipt numbers, password-reset helpers, session retirement and the login/forgot-password throttles. Flows that touch the database are still covered by `docs/TESTING.md`.
+
 ## API map
 
 Everything is under `/api/v1/<role>/…` (the frontend adds the role prefix automatically):
 `/auth` · `/superadmin/schools` · `/admin/{classes,subjects,users,questions,exams,curriculum,activity,review,billing,branding}` ·
 `/teacher/{classes,subjects,questions,curriculum,exams,results,grading,branding}` · `/student/{exams,attempts,results,branding}` ·
-`/webhooks/nomba`. Teacher and admin routes sit behind the subscription check; billing, login and student routes do not.
+`/auth/{login,change-password,forgot-password,reset-password}` · `/cron/maintenance` · `/webhooks/nomba`. Teacher and admin routes sit behind the subscription check; billing, login and student routes do not.
+
+## Security
+
+- **Login throttling:** after 5 wrong passwords for an account from one device, that device is locked out of the account for 15 minutes; 20 wrong passwords from anywhere pause the account; 100 failures from one IP block that IP. Counters live in MongoDB so they work across serverless instances.
+- **Live account checks:** every request re-checks that the user still exists and the school is active (cached for 30 seconds), so deactivating a school or deleting a user signs people out within about a minute instead of after the 8-hour token life.
+- **Headers:** `helmet` sets standard security headers.
 
 ## Known limitations / roadmap
 
 - Nomba webhook signature verification needs fixing before online payments can be switched on.
 - Exams need an internet connection throughout (true offline exam-taking is deferred).
 - Logo upload is not built: a school's logo is set by pasting an image URL, plus a brand colour.
-- Abandoned attempts are finalized by an admin button, not automatically.
-- No self-service "forgot password": an admin resets it.
-- No automated tests yet — use `docs/TESTING.md`.
+- Students without an email can't use *Forgot password* (their teacher/admin resets it).
+- Nomba payments can't be cancelled in-app (refund through Nomba).
+- Only unit tests are automated; database and browser flows follow `docs/TESTING.md`.

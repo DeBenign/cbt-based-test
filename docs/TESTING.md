@@ -43,6 +43,10 @@ Prepare three browsers or profiles (or one normal + two private windows): **Owne
 | 3.3 | Enter wrong current password | Error shown; you are **not** signed out |
 | 3.4 | Change the password correctly | Continues to the student's exams; next login uses the new password |
 | 3.5 | Sign in as a teacher the same way | Same forced change |
+| 3.6 | While still on the forced-change page, open the browser's dev tools and call any other API (e.g. `GET /api/v1/student/exams` with the token) | `403` with `PASSWORD_CHANGE_REQUIRED` — enforced by the server, not just the app |
+| 3.7 | After the change, use the same tab | Works without signing in again (a fresh token was issued) |
+| 3.8 | Sign the same account in on a second browser first, then change the password in the first | The second browser is sent to sign-in with "Your password was changed" within ~30 seconds |
+| 3.9 | Admin resets a signed-in teacher's password | The teacher's next click goes to sign-in; signing in with the temporary password forces a change |
 
 ## 4. Curriculum and AI questions (needs `ANTHROPIC_API_KEY` and credit)
 
@@ -103,6 +107,36 @@ Prepare three browsers or profiles (or one normal + two private windows): **Owne
 | 9.5 | **Finalize abandoned attempts** on the exam | The "closed browser" attempt gets a score |
 | 9.6 | **Reset** an attempt (exam window still open) | Student can start again |
 
+## 9b. Abandoned attempts (automatic)
+
+Needs `CRON_SECRET` set on the backend. Use a short exam so the deadline passes quickly.
+
+| # | Do | Expect |
+|---|----|--------|
+| 9b.1 | Student starts an exam, closes the browser; wait until 3+ minutes after their deadline | Attempt still shows *in progress* |
+| 9b.2 | Teacher opens that exam's Results (after the 1-hour unlock) or Grading | The attempt is now *auto-submitted* with a score — no button pressed |
+| 9b.3 | Repeat 9b.1, then run `curl -H "Authorization: Bearer $CRON_SECRET" <backend>/api/v1/cron/maintenance` | JSON shows `attempts.finalized` ≥ 1; Activity feed has a "System" line "Automatically finalized N abandoned attempt(s)" |
+| 9b.4 | Same curl with a wrong or missing secret | `401` (or `503` if `CRON_SECRET` is not set on the server) |
+| 9b.5 | Run the curl again | `finalized` is 0 (nothing double-processed) |
+| 9b.6 | Vercel → backend project → Settings → Cron Jobs | `/api/v1/cron/maintenance` listed; *Run* it once and check the log |
+
+## 9c. Forgot password (needs `RESEND_API_KEY` + `MAIL_FROM`)
+
+| # | Do | Expect |
+|---|----|--------|
+| 9c.1 | Login page → *Forgot password?* → enter a teacher's email | Same neutral message shown; email arrives within a minute |
+| 9c.2 | Enter an email that doesn't exist | Identical message, no email |
+| 9c.3 | Enter a bulk-created student's username | Identical message, no email (placeholder address) |
+| 9c.4 | Open the link; the address bar no longer shows the code | Form to choose a new password |
+| 9c.5 | Save a new password, then sign in with it | Works; a "your password was changed" email arrives; old password refused |
+| 9c.6 | Reopen the same link | "invalid or has expired" (single use) |
+| 9c.7 | Request two links; use the **older** one | Refused; only the newest works |
+| 9c.8 | Request a link, wait 30+ minutes, use it | Refused as expired |
+| 9c.9 | Ask for a reset 4 times for the same account within 15 minutes | 4th is refused: "Too many requests" |
+| 9c.10 | Signed in on another browser, reset by link | The other browser is signed out |
+| 9c.11 | Remove `RESEND_API_KEY` (or test on a deployment without it) and request a link | Clear message: "isn't switched on yet… ask your school admin" |
+| 9c.12 | Deactivated school's teacher requests a link | Neutral message, no email |
+
 ## 10. Billing
 
 | # | Do | Expect |
@@ -115,6 +149,19 @@ Prepare three browsers or profiles (or one normal + two private windows): **Owne
 | 10.6 | Teacher/student sign in again; admin pages work | No re-login needed for the admin |
 | 10.7 | Record another payment with the **same reference** | Refused: reference already exists |
 | 10.8 | Record 1 term with an explicit *Access until* date | That exact date is used |
+| 10.9 | Expand the school: *Payments* list | Each payment shows a receipt number like `BMK-2026-00001` and a **Receipt** link |
+| 10.10 | Open a receipt as the owner, then as the school admin (Billing → Receipt) | Same details; *Print / save as PDF* prints only the receipt |
+| 10.11 | As admin, try to open another school's receipt by editing the URL's payment id | "Receipt not found" |
+| 10.12 | Record a wrong payment (wrong amount), then **Cancel this payment** with no reason | Refused until a reason is typed |
+| 10.13 | Cancel it with a reason | Entry shows *Cancelled* (struck through); "Access until" returns to its earlier value; admin's Billing shows it as Cancelled and the activity feed has a "payment was cancelled" line |
+| 10.14 | Re-record the correct payment using the **same receipt/reference** | Accepted this time |
+| 10.15 | Record two payments, then try to cancel the **older** one | No cancel button; if forced via the API: "Cancel the more recent payment first (receipt …)" |
+| 10.16 | Open the cancelled payment's receipt | Red "CANCELLED" banner |
+| 10.17 | Set a school's `trialEndsAt` (or `subscriptionPaidUntil`) to ~5 days ahead; sign in as its admin | Yellow banner: "…ends in 5 days… See how to renew" |
+| 10.18 | Owner → Schools | School shows "access ends in 5 days"; ticking *Only schools whose access ends within 30 days* keeps it |
+| 10.19 | Run the maintenance curl (9b.3) with email configured | The admin gets one reminder email; `reminders.emailsSent` ≥ 1 |
+| 10.20 | Run it again | No second email (`emailsSent` 0) |
+| 10.21 | Record a payment (new end date), then repeat 10.17–10.19 close to the new end | A fresh reminder is sent for the new date |
 
 ## 11. Security spot checks
 
@@ -123,3 +170,8 @@ Prepare three browsers or profiles (or one normal + two private windows): **Owne
 | 11.1 | A student opens `/teacher/questions` in the address bar | Redirected away |
 | 11.2 | Sign in with a wrong password | "Invalid credentials" (not a network error) |
 | 11.3 | Stay idle past the token lifetime, then click | Sent to the sign-in page |
+| 11.4 | Enter a wrong password 5 times for the same account | The 6th try (even with the right password) is refused: "Too many failed sign-in attempts. Try again in N minutes." A different account still signs in |
+| 11.5 | Sign in successfully before the 5th failure | The failure counter resets |
+| 11.6 | While a teacher is signed in, the owner deactivates their school | Within about 30 seconds the teacher's next click returns them to the sign-in page with "Your school's account is no longer active" |
+| 11.7 | Reactivate the school | The teacher can sign in again |
+| 11.8 | Admin deletes a signed-in student's account | The student is signed out within about 30 seconds |

@@ -2,7 +2,7 @@ import { Schema, model, Document, Types } from "mongoose";
 
 export interface IAuditLog extends Document {
   schoolId: Types.ObjectId;
-  actorId: Types.ObjectId;
+  actorId?: Types.ObjectId;      // absent for automatic jobs (actorRole "system")
   actorRole: string;
   targetUserId?: Types.ObjectId; // set when an action is done TO someone (e.g. admin corrects a student's attempt)
   action: string;                // machine-readable, e.g. "exam.publish" or "admin.reopen_attempt"
@@ -15,7 +15,11 @@ export interface IAuditLog extends Document {
 
 const auditLogSchema = new Schema<IAuditLog>({
   schoolId: { type: Schema.Types.ObjectId, ref: "School", required: true },
-  actorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+  actorId: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    required: function (this: { actorRole?: string }) { return this.actorRole !== "system"; }
+  },
   actorRole: { type: String, required: true },
   targetUserId: { type: Schema.Types.ObjectId, ref: "User" },
   action: { type: String, required: true },

@@ -1,5 +1,7 @@
 import { useEffect, useState, FormEvent } from "react";
+import { Link } from "react-router-dom";
 import api from "../services/api";
+import { useRolePath } from "../hooks/useRolePath";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import PrimaryButton from "../components/PrimaryButton";
@@ -7,6 +9,9 @@ import PageShell from "../components/PageShell";
 import Spinner from "../components/Spinner";
 
 interface PaymentRow {
+  id: string;
+  status: "applied" | "voided";
+  receiptNo: string | null;
   amount: number;
   reference: string;
   method: "nomba" | "manual";
@@ -49,6 +54,7 @@ export default function Billing() {
   const [terms, setTerms] = useState(1);
   const [payError, setPayError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const rolePath = useRolePath();
 
   useEffect(() => {
     api
@@ -167,9 +173,16 @@ export default function Billing() {
         <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No payments recorded yet.</p>
       )}
       {status.payments.map((p) => (
-        <Card key={p.reference} style={{ marginBottom: 8 }}>
-          <p style={{ fontWeight: 500, marginBottom: 2 }}>₦{p.amount.toLocaleString()}</p>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 0 }}>{describePayment(p)}</p>
+        <Card key={p.id} style={{ marginBottom: 8, opacity: p.status === "voided" ? 0.6 : 1 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ fontWeight: 500, marginBottom: 2, textDecoration: p.status === "voided" ? "line-through" : "none" }}>
+              ₦{p.amount.toLocaleString()} {p.status === "voided" && <Badge tone="danger">Cancelled</Badge>}
+            </p>
+            <Link to={rolePath(`/receipt/${p.id}`)} style={{ fontSize: 13 }}>Receipt</Link>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 0 }}>
+            {[p.receiptNo, describePayment(p)].filter(Boolean).join(" · ")}
+          </p>
         </Card>
       ))}
     </PageShell>

@@ -1,6 +1,8 @@
 import { Response } from "express";
 import bcrypt from "bcryptjs";
 import { AuthedRequest } from "../middleware/auth";
+import { clearAccountCache, forgetAccount } from "../utils/accountCheck";
+import { MIN_PASSWORD_LENGTH } from "../utils/password";
 import User from "../models/User";
 
 export async function listUsers(req: AuthedRequest, res: Response) {
@@ -36,6 +38,7 @@ export async function deleteUser(req: AuthedRequest, res: Response) {
     return res.status(400).json({ error: "Admin accounts can't be deleted here" });
   }
   await user.deleteOne();
+  clearAccountCache();
   res.status(204).send();
 }
 
@@ -47,8 +50,8 @@ export async function deleteUser(req: AuthedRequest, res: Response) {
 // (in authController) for their own account instead.
 export async function resetUserPassword(req: AuthedRequest, res: Response) {
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 4) {
-    return res.status(400).json({ error: "New password must be at least 4 characters." });
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters.` });
   }
 
   const user = await User.findOne({ _id: req.params.id, schoolId: req.user!.schoolId });
@@ -59,6 +62,8 @@ export async function resetUserPassword(req: AuthedRequest, res: Response) {
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.mustChangePassword = true; // it's a temporary password the admin knows
+  user.passwordChangedAt = new Date(); // any session already open with the old password ends
   await user.save();
+  forgetAccount(String(user._id));
   res.json({ message: `Password reset for ${user.email}.` });
 }

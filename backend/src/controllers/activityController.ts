@@ -28,7 +28,9 @@ function serializeLog(l: any) {
     entityType: l.entityType,
     entityId: l.entityId,
     meta: l.meta,
-    actor: l.actorId ? { _id: l.actorId._id, name: l.actorId.name, role: l.actorId.role } : { name: "Deleted user", role: l.actorRole },
+    actor: l.actorRole === "system"
+      ? { name: "System", role: "system" }
+      : l.actorId ? { _id: l.actorId._id, name: l.actorId.name, role: l.actorId.role } : { name: "Deleted user", role: l.actorRole },
     target: l.targetUserId ? { _id: l.targetUserId._id, name: l.targetUserId.name } : null
   };
 }

@@ -4,6 +4,7 @@ import Exam from "../models/Exam";
 import ExamAttempt from "../models/ExamAttempt";
 import Question from "../models/Question";
 import { gradeAttempt } from "../services/gradeAttempt";
+import { finalizeIfExpired } from "../services/finalizeExpired";
 
 const LOCKDOWN_VIOLATION_LIMIT = 3;
 
@@ -45,6 +46,7 @@ export async function startOrResumeAttempt(req: AuthedRequest, res: Response) {
     // Resume is judged by the attempt's own deadline, not the exam's status or
     // window: an admin may have reopened it after the window closed.
     if (now > attempt.serverEndTime) {
+      await finalizeIfExpired(attempt._id); // score it now instead of leaving it for the sweep
       return res.status(400).json({ error: "Your time for this exam has ended." });
     }
     // Already started -- return the SAME frozen question order and options,

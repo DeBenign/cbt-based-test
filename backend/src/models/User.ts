@@ -8,6 +8,7 @@ export interface IUser extends Document {
   email: string;
   username?: string; // auto-generated for bulk-created accounts; usable instead of email at login
   mustChangePassword?: boolean;
+  passwordChangedAt?: Date; // sessions signed in before this moment are no longer valid
   passwordHash: string;
   role: UserRole;
   classId?: Types.ObjectId;
@@ -21,6 +22,7 @@ const userSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, lowercase: true },
   username: { type: String, lowercase: true, unique: true, sparse: true },
   mustChangePassword: { type: Boolean, default: false },
+  passwordChangedAt: Date,
   passwordHash: { type: String, required: true },
   role: { type: String, enum: ["superadmin", "admin", "teacher", "student"], required: true },
   classId: { type: Schema.Types.ObjectId, ref: "Class" },

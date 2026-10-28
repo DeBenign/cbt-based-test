@@ -7,7 +7,7 @@ import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 
 export default function ChangePassword() {
-  const { user, clearMustChangePassword } = useAuth();
+  const { user, clearMustChangePassword, replaceToken } = useAuth();
   const navigate = useNavigate();
   const forced = !!user?.mustChangePassword;
   const [currentPassword, setCurrentPassword] = useState("");
@@ -28,7 +28,8 @@ export default function ChangePassword() {
     }
 
     try {
-      await api.post("/auth/change-password", { currentPassword, newPassword });
+      const res = await api.post("/auth/change-password", { currentPassword, newPassword });
+      if (res.data?.token) replaceToken(res.data.token);
       setSuccess("Password changed.");
       if (forced) {
         clearMustChangePassword();

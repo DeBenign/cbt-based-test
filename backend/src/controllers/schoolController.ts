@@ -4,8 +4,10 @@ import { AuthedRequest } from "../middleware/auth";
 import School from "../models/School";
 import User from "../models/User";
 import Payment from "../models/Payment";
-import { applyPayment } from "../services/paymentService";
-import { ensureTrialDates, getAccessStatus } from "../utils/schoolAccess";
+import { buildReceipt, ensureReceiptNo } from "../utils/receipt";
+import { applyPayment, voidPayment } from "../services/paymentService";
+import { ensureTrialDates, getAccessStatus, accessExpiry } from "../utils/schoolAccess";
+import { clearAccountCache } from "../utils/accountCheck";
 import { TERM_DAYS, MAX_TERMS_PER_PAYMENT, effectivePrice, termFee, onlinePaymentsEnabled } from "../utils/billingConfig";
 
 const TRIAL_DAYS = 90; // ~one term -- change this one line if your terms run differently
@@ -56,6 +58,8 @@ export async function listSchools(_req: AuthedRequest, res: Response) {
         trialEndsAt: s.trialEndsAt,
         subscriptionStatus: s.subscriptionStatus,
         subscriptionPaidUntil: s.subscriptionPaidUntil,
+        accessEndsAt: accessExpiry(s).endsAt,
+        accessDaysLeft: accessExpiry(s).daysLeft,
         studentCount,
         pricePerStudent: effectivePrice(s.pricePerStudent),
         hasCustomPrice: !!s.pricePerStudent,
@@ -72,6 +76,7 @@ export async function setSchoolActive(req: AuthedRequest, res: Response) {
   const { isActive } = req.body;
   const school = await School.findByIdAndUpdate(req.params.id, { isActive }, { new: true });
   if (!school) return res.status(404).json({ error: "School not found" });
+  clearAccountCache();
   res.json(school);
 }
 
@@ -109,7 +114,12 @@ export async function recordPayment(req: AuthedRequest, res: Response) {
     if ("alreadyProcessed" in result) {
       return res.status(409).json({ error: "A payment with this reference already exists" });
     }
-    res.json({ message: "Payment recorded", subscriptionPaidUntil: result.subscriptionPaidUntil });
+    res.json({
+      message: "Payment recorded",
+      subscriptionPaidUntil: result.subscriptionPaidUntil,
+      paymentId: result.paymentId,
+      receiptNo: result.receiptNo
+    });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -158,9 +168,14 @@ export async function getBillingStatus(req: AuthedRequest, res: Response) {
     termFee: termFee(studentCount, school.pricePerStudent),
     termDays: TERM_DAYS,
     onlinePaymentsEnabled: onlinePaymentsEnabled(),
+    accessEndsAt: accessExpiry(school).endsAt,
+    accessDaysLeft: accessExpiry(school).daysLeft,
     payments: payments.map((p) => ({
+      id: p._id,
+      status: p.status,
+      receiptNo: p.receiptNo ?? null,
       amount: p.amount,
-      reference: p.reference,
+      reference: p.status === "voided" ? p.originalReference || p.reference : p.reference,
       method: p.method,
       terms: p.terms ?? null,
       termLabel: p.termLabel ?? null,
@@ -168,4 +183,63 @@ export async function getBillingStatus(req: AuthedRequest, res: Response) {
       confirmedAt: p.confirmedAt
     }))
   });
+}
+
+// ---- payment history, undo and receipts ----
+
+// Superadmin: one school's payments (voided ones included, marked as such).
+export async function listSchoolPayments(req: AuthedRequest, res: Response) {
+  const payments = await Payment.find({ schoolId: req.params.id }).sort({ confirmedAt: -1, _id: -1 });
+  const latest = payments.find((p) => p.status !== "voided");
+  res.json(
+    payments.map((p) => ({
+      id: p._id,
+      status: p.status,
+      receiptNo: p.receiptNo ?? null,
+      amount: p.amount,
+      reference: p.status === "voided" ? p.originalReference || p.reference : p.reference,
+      method: p.method,
+      terms: p.terms ?? null,
+      termLabel: p.termLabel ?? null,
+      confirmedAt: p.confirmedAt,
+      voidedAt: p.voidedAt ?? null,
+      voidReason: p.voidReason ?? null,
+      // The only one that can be undone is the newest, manual one (the server re-checks).
+      canVoid: p.status !== "voided" && p.method === "manual" && !!p.paidUntilAfter && !!latest && latest._id.equals(p._id)
+    }))
+  );
+}
+
+// Superadmin: undo a wrongly recorded cash payment (needs a written reason).
+export async function voidSchoolPayment(req: AuthedRequest, res: Response) {
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 5) return res.status(400).json({ error: "Give a reason (at least a few words)." });
+
+  const result = await voidPayment({
+    schoolId: req.params.id,
+    paymentId: req.params.paymentId,
+    reason,
+    voidedBy: req.user!.userId
+  });
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  res.json({ message: "Payment cancelled. The school's access date has been restored.", subscriptionPaidUntil: result.subscriptionPaidUntil });
+}
+
+async function sendReceipt(schoolId: string, paymentId: string, includeVoidReason: boolean, res: Response) {
+  const [school, payment] = await Promise.all([
+    School.findById(schoolId).select("name address"),
+    Payment.findOne({ _id: paymentId, schoolId })
+  ]);
+  if (!school || !payment) return res.status(404).json({ error: "Receipt not found" });
+  await ensureReceiptNo(payment);
+  res.json(buildReceipt(payment, school, { includeVoidReason }));
+}
+
+export async function getSchoolReceipt(req: AuthedRequest, res: Response) {
+  return sendReceipt(req.params.id, req.params.paymentId, true, res);
+}
+
+// School admin: receipts for their own school only (the school comes from the token).
+export async function getMyReceipt(req: AuthedRequest, res: Response) {
+  return sendReceipt(req.user!.schoolId, req.params.paymentId, false, res);
 }

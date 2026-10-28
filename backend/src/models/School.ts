@@ -15,6 +15,7 @@ export interface ISchool extends Document {
   subscriptionPaidUntil?: Date;
   pricePerStudent?: number; // optional per-school override of the default per-student term price
   branding: ISchoolBranding;
+  reminderKeysSent?: string[]; // which expiry reminders have already been emailed
 }
 
 const schoolSchema = new Schema<ISchool>({
@@ -29,7 +30,8 @@ const schoolSchema = new Schema<ISchool>({
   branding: {
     logoUrl: String,
     primaryColor: String
-  }
+  },
+  reminderKeysSent: { type: [String], default: [] }
 });
 
 export default model<ISchool>("School", schoolSchema);

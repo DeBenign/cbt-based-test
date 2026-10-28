@@ -14,6 +14,7 @@ interface AuthContextValue {
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
   clearMustChangePassword: () => void;
+  replaceToken: (token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -53,7 +54,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  return <AuthContext.Provider value={{ user, login, logout, clearMustChangePassword }}>{children}</AuthContext.Provider>;
+  // After a password change the server issues a fresh token (the old one is retired).
+  function replaceToken(token: string) {
+    localStorage.setItem("cbt_token", token);
+  }
+
+  return <AuthContext.Provider value={{ user, login, logout, clearMustChangePassword, replaceToken }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -1,11 +1,13 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import User from "../models/User";
 import { AuthedRequest } from "../middleware/auth";
 import School from "../models/School";
 import { ensureTrialDates, getAccessStatus } from "../utils/schoolAccess";
 import AuditLog from "../models/AuditLog";
+import { MIN_PASSWORD_LENGTH, signToken } from "../utils/password";
+import { forgetAccount } from "../utils/accountCheck";
+import { mongoThrottleStore, checkLoginAllowed, recordLoginFailure, recordLoginSuccess } from "../services/authThrottle";
 
 // Only a logged-in admin can call this (see authRoutes.ts). schoolId always
 // comes from the admin's own token, never from the request body, so an
@@ -41,11 +43,29 @@ export async function login(req: Request, res: Response) {
     const { identifier, email, password } = req.body;
     const loginId = String(identifier ?? email ?? "").trim().toLowerCase();
     if (!loginId || !password) return res.status(400).json({ error: "Enter your email or username and password." });
+
+    // Slow down password guessing: refuse before even checking the password
+    // once too many recent attempts have failed.
+    const ip = req.ip || "unknown";
+    const gate = await checkLoginAllowed(mongoThrottleStore, loginId, ip);
+    if (!gate.allowed) {
+      res.set("Retry-After", String(gate.retryAfterSec));
+      const minutes = Math.max(1, Math.ceil(gate.retryAfterSec / 60));
+      return res.status(429).json({ error: `Too many failed sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` });
+    }
+
     const user = await User.findOne({ $or: [{ email: loginId }, { username: loginId }] });
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    if (!user) {
+      await recordLoginFailure(mongoThrottleStore, loginId, ip);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return res.status(401).json({ error: "Invalid credentials" });
+    if (!valid) {
+      await recordLoginFailure(mongoThrottleStore, loginId, ip);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    await recordLoginSuccess(mongoThrottleStore, loginId, ip);
 
     if (user.schoolId) {
       const school = await School.findById(user.schoolId);
@@ -61,11 +81,7 @@ export async function login(req: Request, res: Response) {
       }
     }
 
-    const token = jwt.sign(
-      { userId: user._id, schoolId: user.schoolId, role: user.role },
-      process.env.JWT_SECRET as string,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" } as jwt.SignOptions
-    );
+    const token = signToken(user);
 
     if (user.schoolId) {
       try {
@@ -103,8 +119,8 @@ export async function login(req: Request, res: Response) {
 // and superadmin accounts, since resetUserPassword deliberately excludes them.
 export async function changeOwnPassword(req: AuthedRequest, res: Response) {
   const { currentPassword, newPassword } = req.body;
-  if (!newPassword || newPassword.length < 4) {
-    return res.status(400).json({ error: "New password must be at least 4 characters." });
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters.` });
   }
 
   const user = await User.findById(req.user!.userId);
@@ -115,6 +131,9 @@ export async function changeOwnPassword(req: AuthedRequest, res: Response) {
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.mustChangePassword = false;
+  user.passwordChangedAt = new Date(); // signs this person out on every other device
   await user.save();
-  res.json({ message: "Password changed." });
+  forgetAccount(String(user._id));
+  // Hand back a fresh token: the one used for this request predates the change.
+  res.json({ message: "Password changed.", token: signToken(user) });
 }

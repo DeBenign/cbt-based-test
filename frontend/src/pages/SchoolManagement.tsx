@@ -1,4 +1,5 @@
 import { useEffect, useState, FormEvent } from "react";
+import { Link } from "react-router-dom";
 import api from "../services/api";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
@@ -14,12 +15,35 @@ interface SchoolRow {
   trialEndsAt: string;
   subscriptionStatus: string;
   subscriptionPaidUntil?: string;
+  accessEndsAt: string;
+  accessDaysLeft: number;
   studentCount: number;
   pricePerStudent: number;
   hasCustomPrice: boolean;
   termFee: number;
   adminCount: number;
   admins: { name: string; email: string }[];
+}
+
+interface PaymentItem {
+  id: string;
+  status: "applied" | "voided";
+  receiptNo: string | null;
+  amount: number;
+  reference: string;
+  method: "nomba" | "manual";
+  terms: number | null;
+  termLabel: string | null;
+  confirmedAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  canVoid: boolean;
+}
+
+function expiryText(days: number): string {
+  if (days < 0) return `ended ${-days} day${days === -1 ? "" : "s"} ago`;
+  if (days === 0) return "ends today";
+  return `ends in ${days} day${days === 1 ? "" : "s"}`;
 }
 
 interface PaymentDraft {
@@ -54,6 +78,10 @@ export default function SchoolManagement() {
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, PaymentDraft>>({});
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [paymentMessages, setPaymentMessages] = useState<Record<string, string>>({});
+  const [payments, setPayments] = useState<Record<string, PaymentItem[]>>({});
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [onlyEnding, setOnlyEnding] = useState(false);
 
   async function loadSchools() {
     const res = await api.get("/schools");
@@ -63,6 +91,23 @@ export default function SchoolManagement() {
   useEffect(() => {
     loadSchools();
   }, []);
+
+  async function loadPayments(id: string) {
+    const res = await api.get(`/schools/${id}/payments`);
+    setPayments((prev) => ({ ...prev, [id]: res.data }));
+  }
+
+  async function handleVoid(schoolId: string, paymentId: string) {
+    try {
+      const res = await api.post(`/schools/${schoolId}/payments/${paymentId}/void`, { reason: voidReason });
+      setPaymentMessages((prev) => ({ ...prev, [schoolId]: res.data.message }));
+      setVoidingId(null);
+      setVoidReason("");
+      await Promise.all([loadPayments(schoolId), loadSchools()]);
+    } catch (err: any) {
+      setPaymentMessages((prev) => ({ ...prev, [schoolId]: err.response?.data?.error || "Couldn't cancel the payment." }));
+    }
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -113,9 +158,9 @@ export default function SchoolManagement() {
         termLabel: d.termLabel.trim() || undefined,
         paidUntil: d.paidUntil ? new Date(`${d.paidUntil}T23:59:59`).toISOString() : undefined
       });
-      setPaymentMessages((prev) => ({ ...prev, [id]: `${res.data.message} — access until ${new Date(res.data.subscriptionPaidUntil).toLocaleDateString()}` }));
+      setPaymentMessages((prev) => ({ ...prev, [id]: `${res.data.message} (receipt ${res.data.receiptNo}) — access until ${new Date(res.data.subscriptionPaidUntil).toLocaleDateString()}` }));
       setPaymentDrafts((prev) => ({ ...prev, [id]: EMPTY_DRAFT }));
-      await loadSchools();
+      await Promise.all([loadSchools(), loadPayments(id)]);
     } catch (err: any) {
       setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't record the payment." }));
     }
@@ -170,7 +215,11 @@ export default function SchoolManagement() {
       </Card>
 
       <h3>All schools ({schools.length})</h3>
-      {schools.map((s) => {
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 10 }}>
+        <input type="checkbox" checked={onlyEnding} onChange={(e) => setOnlyEnding(e.target.checked)} />
+        Only schools whose access ends within 30 days (or already ended)
+      </label>
+      {schools.filter((s) => !onlyEnding || s.accessDaysLeft <= 30).map((s) => {
         const isExpanded = expandedId === s.id;
         const badge = billingBadge(s);
         const d = draft(s.id);
@@ -178,12 +227,15 @@ export default function SchoolManagement() {
           <Card key={s.id} style={{ marginBottom: 10 }}>
             <div
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-              onClick={() => setExpandedId(isExpanded ? null : s.id)}
+              onClick={() => {
+                setExpandedId(isExpanded ? null : s.id);
+                if (!isExpanded && !payments[s.id]) loadPayments(s.id);
+              }}
             >
               <div>
                 <p style={{ fontWeight: 500 }}>{s.name}</p>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                  {s.address || "No address"} · {s.adminCount} admin{s.adminCount !== 1 ? "s" : ""}
+                  {s.address || "No address"} · {s.adminCount} admin{s.adminCount !== 1 ? "s" : ""} · access {expiryText(s.accessDaysLeft)}
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -264,7 +316,35 @@ export default function SchoolManagement() {
                       Record payment
                     </button>
                   </div>
-                  {paymentMessages[s.id] && <p style={{ marginBottom: 0 }}>{paymentMessages[s.id]}</p>}
+                  {paymentMessages[s.id] && <p style={{ marginBottom: 6 }}>{paymentMessages[s.id]}</p>}
+
+                  <p style={{ fontWeight: 500, margin: "12px 0 6px", color: "var(--text-primary)" }}>Payments</p>
+                  {(payments[s.id] || []).length === 0 && <p>No payments recorded yet.</p>}
+                  {(payments[s.id] || []).map((p) => (
+                    <div key={p.id} style={{ marginBottom: 8, opacity: p.status === "voided" ? 0.6 : 1 }}>
+                      <p style={{ marginBottom: 2, textDecoration: p.status === "voided" ? "line-through" : "none" }}>
+                        ₦{p.amount.toLocaleString()} · {p.receiptNo ? `${p.receiptNo} · ` : ""}ref {p.reference} · {new Date(p.confirmedAt).toLocaleDateString()}
+                        {p.status === "voided" && <> <Badge tone="danger">Cancelled</Badge></>}
+                      </p>
+                      <p style={{ marginBottom: 0 }}>
+                        <Link to={`/superadmin/receipt/${p.id}?school=${s.id}`}>Receipt</Link>
+                        {p.canVoid && voidingId !== p.id && (
+                          <> · <button type="button" onClick={() => { setVoidingId(p.id); setVoidReason(""); }} style={{ padding: "1px 8px", fontSize: 12 }}>Cancel this payment</button></>
+                        )}
+                        {p.voidReason && <> · reason: {p.voidReason}</>}
+                      </p>
+                      {voidingId === p.id && (
+                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                          <input placeholder="Why is it being cancelled? (required)" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} style={{ flex: 1 }} />
+                          <button type="button" onClick={() => handleVoid(s.id, p.id)} style={{ padding: "3px 10px" }}>Confirm cancel</button>
+                          <button type="button" onClick={() => setVoidingId(null)} style={{ padding: "3px 10px" }}>Keep it</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 0 }}>
+                    Only the newest cash payment can be cancelled; the school's access date goes back to what it was. To correct a mistake, cancel it and record the right payment (the same receipt number can be used again).
+                  </p>
                 </div>
               </div>
             )}
