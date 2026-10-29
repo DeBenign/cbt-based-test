@@ -4,6 +4,8 @@ import { Subject, ClassRoom } from "../types";
 import Card from "../components/Card";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
+import ClassPicker from "../components/ClassPicker";
+import { LEVELS, groupByLevel } from "../utils/levels";
 
 function idSuffix(id: string) {
   return id.slice(-6);
@@ -22,6 +24,7 @@ export default function Setup() {
   const [subjectName, setSubjectName] = useState("");
   const [subjectClassIds, setSubjectClassIds] = useState<string[]>([]);
   const [className, setClassName] = useState("");
+  const [level, setLevel] = useState("");
   const [academicYear, setAcademicYear] = useState("2025/2026");
   const [error, setError] = useState<string | null>(null);
 
@@ -59,7 +62,7 @@ export default function Setup() {
     e.preventDefault();
     setError(null);
     try {
-      await api.post("/classes", { name: className, academicYear });
+      await api.post("/classes", { name: className, academicYear, level });
       setClassName("");
       await loadAll();
     } catch (err: any) {
@@ -110,7 +113,8 @@ export default function Setup() {
     <PageShell maxWidth={640}>
       <h1>Setup</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 20 }}>
-        Create your classes and subjects here first — question banks, exams, and student accounts
+        Add each class under its level (Nursery, Primary, Junior or Senior Secondary), then add each subject <b>once</b> and tick every class that
+        takes it — "Mathematics" is one subject for all of them, and each class keeps its own questions and curriculum. Create your classes and subjects here first — question banks, exams, and student accounts
         all pick from these instead of needing a raw ID. Each one shown below includes its ID suffix,
         so two entries with the same name (e.g. two "JSS2"s) are still tellable apart.
       </p>
@@ -120,8 +124,12 @@ export default function Setup() {
       <Card style={{ marginBottom: 20 }}>
         <h3>Classes</h3>
         <form onSubmit={handleAddClass} style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          <select value={level} onChange={(e) => setLevel(e.target.value)} required style={{ width: 150 }}>
+            <option value="">Level…</option>
+            {LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
           <input
-            placeholder="e.g. JSS1"
+            placeholder="e.g. Primary 3"
             value={className}
             onChange={(e) => setClassName(e.target.value)}
             required
@@ -137,7 +145,10 @@ export default function Setup() {
           <PrimaryButton type="submit">Add</PrimaryButton>
         </form>
         {classes.length === 0 && <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>No classes yet.</p>}
-        {classes.map((c) => (
+        {groupByLevel(classes).map((g) => (
+          <div key={g.level} style={{ marginBottom: 10 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", margin: "8px 0 2px" }}>{g.label}</p>
+            {g.items.map((c) => (
           <div
             key={c._id}
             style={{
@@ -156,6 +167,8 @@ export default function Setup() {
               Delete
             </button>
           </div>
+            ))}
+          </div>
         ))}
       </Card>
 
@@ -172,20 +185,7 @@ export default function Setup() {
             />
             <PrimaryButton type="submit">Add</PrimaryButton>
           </div>
-          {classes.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {classes.map((c) => (
-                <label key={c._id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-                  <input
-                    type="checkbox"
-                    checked={subjectClassIds.includes(c._id)}
-                    onChange={() => setSubjectClassIds((prev) => toggle(prev, c._id))}
-                  />
-                  {c.name}
-                </label>
-              ))}
-            </div>
-          )}
+          <ClassPicker classes={classes} selected={subjectClassIds} onChange={setSubjectClassIds} />
         </form>
 
         {subjects.length === 0 && <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>No subjects yet.</p>}
@@ -207,16 +207,7 @@ export default function Setup() {
 
             {editingSubjectId === s._id && (
               <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                {classes.map((c) => (
-                  <label key={c._id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-                    <input
-                      type="checkbox"
-                      checked={editClassIds.includes(c._id)}
-                      onChange={() => setEditClassIds((prev) => toggle(prev, c._id))}
-                    />
-                    {c.name}
-                  </label>
-                ))}
+                <ClassPicker classes={classes} selected={editClassIds} onChange={setEditClassIds} />
                 <button type="button" onClick={() => handleSaveSubjectClasses(s._id)} style={{ padding: "3px 10px", fontSize: 12 }}>
                   Save
                 </button>

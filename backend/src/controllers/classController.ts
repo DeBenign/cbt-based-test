@@ -1,15 +1,19 @@
 import { Response } from "express";
 import { AuthedRequest } from "../middleware/auth";
-import Class from "../models/Class";
+import Class, { CLASS_LEVELS } from "../models/Class";
 import User from "../models/User";
 import Exam from "../models/Exam";
 
 export async function createClass(req: AuthedRequest, res: Response) {
-  const { name, academicYear } = req.body;
+  const { name, academicYear, level } = req.body;
+  if (level && !CLASS_LEVELS.includes(level)) {
+    return res.status(400).json({ error: `level must be one of: ${CLASS_LEVELS.join(", ")}` });
+  }
   const klass = await Class.create({
     schoolId: req.user!.schoolId,
-    name,
-    academicYear
+    name: String(name || "").trim(),
+    academicYear,
+    level: level || undefined
   });
   res.status(201).json(klass);
 }

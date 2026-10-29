@@ -8,6 +8,7 @@ export interface ClassRoom {
   _id: string;
   name: string;
   academicYear: string;
+  level?: "nursery" | "primary" | "junior_secondary" | "senior_secondary";
 }
 
 export interface AppUser {

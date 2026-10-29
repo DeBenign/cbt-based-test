@@ -6,7 +6,20 @@ import Exam from "../models/Exam";
 import User from "../models/User";
 
 export async function createSubject(req: AuthedRequest, res: Response) {
-  const { name, classIds } = req.body;
+  const { classIds } = req.body;
+  const name = String(req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Give the subject a name." });
+
+  // One subject per name, however many classes use it ("Mathematics" for Nursery,
+  // Primary and Secondary alike) — each class keeps its own questions and curriculum.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const existing = await Subject.findOne({ schoolId: req.user!.schoolId, name: new RegExp(`^${escaped}$`, "i") });
+  if (existing) {
+    return res.status(409).json({
+      error: `"${existing.name}" already exists. Don't add it again — use "Edit classes" on it to link more classes.`
+    });
+  }
+
   const subject = await Subject.create({
     schoolId: req.user!.schoolId,
     name,
