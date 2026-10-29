@@ -120,7 +120,9 @@ Needs `CRON_SECRET` set on the backend. Use a short exam so the deadline passes 
 | 9b.5 | Run the curl again | `finalized` is 0 (nothing double-processed) |
 | 9b.6 | Vercel → backend project → Settings → Cron Jobs | `/api/v1/cron/maintenance` listed; *Run* it once and check the log |
 
-## 9c. Forgot password (needs `RESEND_API_KEY` + `MAIL_FROM`)
+## 9c. Forgot password (needs email set up: `MAIL_FROM` + SMTP_* or `RESEND_API_KEY`)
+
+First run `cd backend && npm run test:mail -- your-own@email.com` — it checks the login and sends one test email.
 
 | # | Do | Expect |
 |---|----|--------|
@@ -134,7 +136,7 @@ Needs `CRON_SECRET` set on the backend. Use a short exam so the deadline passes 
 | 9c.8 | Request a link, wait 30+ minutes, use it | Refused as expired |
 | 9c.9 | Ask for a reset 4 times for the same account within 15 minutes | 4th is refused: "Too many requests" |
 | 9c.10 | Signed in on another browser, reset by link | The other browser is signed out |
-| 9c.11 | Remove `RESEND_API_KEY` (or test on a deployment without it) and request a link | Clear message: "isn't switched on yet… ask your school admin" |
+| 9c.11 | Clear the email settings (or test on a deployment without them) and request a link | Clear message: "isn't switched on yet… ask your school admin" |
 | 9c.12 | Deactivated school's teacher requests a link | Neutral message, no email |
 
 ## 10. Billing
