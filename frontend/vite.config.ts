@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt": the new version waits until src/pwa.ts says it is safe to switch (never mid-exam).
+      registerType: "prompt",
       manifest: {
         name: "Benchmark CBT",
         short_name: "Benchmark",
@@ -27,6 +28,7 @@ export default defineConfig({
         // the network, never a cached response. Exam data, scores, and auth
         // are never safe to serve stale.
         globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        cleanupOutdatedCaches: true,
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//]
       }

@@ -32,7 +32,7 @@ export default function Login() {
       else navigate(role === "student" ? `/${role}/exams` : `/${role}/questions`);
     } catch (err: any) {
       if (!err.response) {
-        setError("Can't reach the server. Please try again in a moment.");
+        setError("Can't reach the server. Check your internet, then refresh this page and try again.");
       } else {
         setError(err.response.data?.error || "Couldn't log in. Check your details and try again.");
       }
