@@ -10,7 +10,8 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  const isAuthCall = config.url?.startsWith("/auth");
+  // /auth and /public are not role-prefixed (the Pricing page works without signing in).
+  const isAuthCall = config.url?.startsWith("/auth") || config.url?.startsWith("/public");
   const role = localStorage.getItem("cbt_role");
 
   if (!isAuthCall && role && config.url) {

@@ -1,6 +1,6 @@
 import { ISchool } from "../models/School";
 
-const TRIAL_DAYS = 90;
+export const TRIAL_DAYS = 90;
 
 // Self-heals any school document created before trialEndsAt existed. Safer
 // than relying on someone running a one-off migration script -- that's

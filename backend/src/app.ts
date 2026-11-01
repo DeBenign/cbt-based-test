@@ -21,6 +21,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import brandingRoutes from "./routes/brandingRoutes";
 import { handleNombaWebhook } from "./controllers/nombaController";
 import { runMaintenance } from "./controllers/cronController";
+import { getPublicPricing } from "./controllers/publicController";
 import { asyncHandler } from "./middleware/asyncHandler";
 import { activityLogger } from "./middleware/activityLogger";
 import curriculumRoutes from "./routes/curriculumRoutes";
@@ -51,6 +52,7 @@ const v1 = express.Router();
 v1.use(activityLogger);
 
 v1.post("/webhooks/nomba", asyncHandler(handleNombaWebhook));
+v1.get("/public/pricing", asyncHandler(getPublicPricing)); // no login: the public Pricing page reads this
 v1.get("/cron/maintenance", asyncHandler(runMaintenance)); // secured by CRON_SECRET, not a login
 
 v1.use("/auth", authRoutes);

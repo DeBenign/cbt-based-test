@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import Card from "../components/Card";
 import PrimaryButton from "../components/PrimaryButton";
+import { PublicNav, PublicFooter } from "../components/PublicLayout";
 
 const features = [
   {
@@ -32,6 +33,7 @@ export default function Home() {
           color: "#fff"
         }}
       >
+        <PublicNav onDark />
         <h1 style={{ fontSize: 32, color: "#fff", marginBottom: 10 }}>Computer-Based Test</h1>
         <p style={{ maxWidth: 480, margin: "0 auto 26px", opacity: 0.92 }}>
           A lightweight CBT platform built for Schools question banking, exam scheduling,
@@ -73,6 +75,7 @@ export default function Home() {
           </Link>
         </Card>
       </div>
+      <PublicFooter />
     </div>
   );
 }

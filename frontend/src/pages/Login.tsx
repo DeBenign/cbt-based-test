@@ -88,6 +88,9 @@ export default function Login() {
         <p style={{ textAlign: "center", fontSize: 13, marginTop: 8, marginBottom: 0 }}>
           <Link to="/forgot-password">Forgot password?</Link>
         </p>
+        <p style={{ textAlign: "center", fontSize: 12, marginTop: 14, marginBottom: 0, color: "var(--text-muted)" }}>
+          <Link to="/pricing">Pricing</Link> · <Link to="/privacy">Privacy</Link>
+        </p>
       </Card>
     </PageShell>
   );

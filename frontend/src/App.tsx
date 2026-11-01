@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import Pricing from "./pages/Pricing";
+import Privacy from "./pages/Privacy";
 import Setup from "./pages/Setup";
 import QuestionBank from "./pages/QuestionBank";
 import ExamBuilder from "./pages/ExamBuilder";
@@ -36,6 +38,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
