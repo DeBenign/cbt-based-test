@@ -2,6 +2,7 @@ import { useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import Card from "../components/Card";
+import BrandLogo from "../components/BrandLogo";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 
@@ -29,6 +30,7 @@ export default function ForgotPassword() {
   return (
     <PageShell maxWidth={380}>
       <Card>
+        <div style={{ textAlign: "center", marginBottom: 12 }}><BrandLogo size={36} centered /></div>
         <h2 style={{ textAlign: "center", marginBottom: 4 }}>Forgot password</h2>
         <p style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
           We'll email you a link to choose a new one.

@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import Card from "../components/Card";
+import BrandLogo from "../components/BrandLogo";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 
@@ -41,6 +42,7 @@ export default function ResetPassword() {
   return (
     <PageShell maxWidth={380}>
       <Card>
+        <div style={{ textAlign: "center", marginBottom: 12 }}><BrandLogo size={36} centered /></div>
         <h2 style={{ textAlign: "center", marginBottom: 16 }}>Choose a new password</h2>
         {done ? (
           <>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Outlet, Link } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
+import BrandLogo from "./BrandLogo";
 import Navbar from "./Navbar";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
@@ -26,6 +27,7 @@ const REMINDER_WINDOW_DAYS = 14;
 
 export default function AppLayout() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
   const [expiry, setExpiry] = useState<{ daysLeft: number; paid: boolean } | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -55,6 +57,12 @@ export default function AppLayout() {
       }
     }).catch(() => { /* not important enough to interrupt the page */ });
   }, [user?.role, user?.mustChangePassword]);
+
+  // Tab title: the school's name first, platform second. (The tab icon is always Benchmark's.)
+  useEffect(() => {
+    const name = branding?.schoolName;
+    document.title = name && name !== "Benchmark" ? `${name} · Benchmark CBT` : "Benchmark CBT";
+  }, [branding?.schoolName]);
 
   // App-wide version of the same online/offline signal TestTaking.tsx
   // already uses during an exam -- here it's just an informational banner,
@@ -95,6 +103,11 @@ export default function AppLayout() {
         </div>
       )}
       <Outlet />
+      {user && user.role !== "superadmin" && !/\/exams\/[^/]+\/take/.test(pathname) && (
+        <div style={{ padding: "18px 24px 28px", textAlign: "center", fontSize: 12, color: "var(--text-muted)", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
+          Powered by <BrandLogo size={16} to={null} />
+        </div>
+      )}
     </div>
   );
 }

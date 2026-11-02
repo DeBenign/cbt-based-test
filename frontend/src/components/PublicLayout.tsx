@@ -1,13 +1,14 @@
 import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CONTACT } from "../utils/contact";
+import BrandLogo from "./BrandLogo";
 
 // Header links for pages anyone can open (no sign-in).
 export function PublicNav({ onDark = false }: { onDark?: boolean }) {
   const color = onDark ? "#fff" : "var(--text-primary)";
   return (
     <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 960, margin: "0 auto 24px", fontSize: 14 }}>
-      <Link to="/" style={{ color, fontWeight: 700, textDecoration: "none" }}>Benchmark CBT</Link>
+      <BrandLogo onDark={onDark} />
       <span style={{ display: "flex", gap: 18 }}>
         <Link to="/pricing" style={{ color }}>Pricing</Link>
         <Link to="/privacy" style={{ color }}>Privacy</Link>

@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import BrandLogo from "../components/BrandLogo";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Card from "../components/Card";
@@ -44,10 +45,8 @@ export default function Login() {
   return (
     <PageShell maxWidth={380}>
       <Card>
-        <h2 style={{ textAlign: "center", marginBottom: 4 }}>Sign in</h2>
-        <p style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
-          School CBT
-        </p>
+        <div style={{ textAlign: "center", marginBottom: 14 }}><BrandLogo size={44} centered /></div>
+        <h2 style={{ textAlign: "center", marginBottom: 18 }}>Sign in</h2>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 14 }}>
             <label>Email or username</label>

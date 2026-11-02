@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useRolePath } from "../hooks/useRolePath";
+import BrandLogo from "./BrandLogo";
 
 interface NavbarProps {
   logoUrl?: string | null;
@@ -13,6 +14,10 @@ export default function Navbar({ logoUrl, schoolName }: NavbarProps) {
   const rolePath = useRolePath();
   const homePath = user?.role === "superadmin" ? rolePath("/schools") : rolePath("/exams");
 
+  const isOwner = user?.role === "superadmin";
+  const hasSchoolLogo = !!logoUrl && !isOwner;
+  const showSchoolName = !!schoolName && schoolName !== "Benchmark" && !isOwner;
+
   function handleLogout() {
     logout();
     navigate("/");
@@ -20,14 +25,20 @@ export default function Navbar({ logoUrl, schoolName }: NavbarProps) {
 
   return (
     <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--surface-1)" }}>
-      <Link to={homePath} style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--text-primary)", fontSize: 15 }}>
-        {logoUrl ? (
-          <img src={logoUrl} alt={schoolName || "School logo"} style={{ height: 24, width: "auto", borderRadius: 4 }} onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
-        ) : (
-          "CBT"
-        )}
-        {schoolName && schoolName !== "Benchmark" ? schoolName : logoUrl ? "" : ""}
-      </Link>
+      {/* The school's own logo leads. Without one (and for the platform owner) the Benchmark logo is shown. */}
+      {hasSchoolLogo ? (
+        <Link to={homePath} style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--text-primary)", fontSize: 15 }}>
+          <img src={logoUrl!} alt={schoolName || "School logo"} style={{ height: 28, width: "auto", borderRadius: 4 }} onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+          {showSchoolName ? schoolName : ""}
+        </Link>
+      ) : isOwner ? (
+        <BrandLogo to={homePath} />
+      ) : (
+        <Link to={homePath} style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--text-primary)", fontSize: 15 }}>
+          <BrandLogo to={null} showName={false} size={28} />
+          {showSchoolName ? schoolName : "Benchmark CBT"}
+        </Link>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 20, fontSize: 14 }}>
         {user?.role === "admin" && (
           <Link to={rolePath("/setup")} style={{ color: "var(--text-secondary)" }}>Setup</Link>
