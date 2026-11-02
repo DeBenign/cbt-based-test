@@ -8,7 +8,8 @@
     "render:teaser": "remotion render src/index.ts Teaser out/benchmark-teaser-9x16.mp4",
     "render:demo": "remotion render src/index.ts Demo out/benchmark-demo-16x9.mp4",
     "render:all": "npm run render:pitch && npm run render:teaser && npm run render:demo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "voice": "node scripts/generate-voice.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.539",

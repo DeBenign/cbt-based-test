@@ -9,7 +9,7 @@ export const HAS_MUSIC = true; // true after you drop public/music.mp3
 export const MUSIC_VOLUME_SOLO = 0.45; // music only
 export const MUSIC_VOLUME_WITH_VOICE = 0.12; // music under narration
 // true per video after you drop public/voice/<video>/<scene>.mp3 files
-export const HAS_VOICE = { pitch: false, teaser: false, demo: false };
+export const HAS_VOICE = { pitch: true, teaser: true, demo: true };
 // Online (Nomba) payments are OFF in the product today. While false, the
 // online-payment scene is labelled "Coming soon" so the video stays honest.
 export const ONLINE_PAYMENTS_LIVE = false;

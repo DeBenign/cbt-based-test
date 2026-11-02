@@ -29,3 +29,13 @@ Three videos from one codebase:
 - `ONLINE_PAYMENTS_LIVE = false` labels the Nomba scene "Coming soon". Flip it to true once online payments work.
 - Prices (₦500 per student, ₦15,000 minimum) are the app's placeholders. Edit `DEMO` in `src/config.ts`.
 - Mock UIs reuse the app's real colors, Inter font, receipt format (BMK-2026-00001) and email wording.
+
+## Generate all voice clips in one command
+```
+# Mac/Linux
+ELEVEN_API_KEY=your_key ELEVEN_VOICE_ID=your_female_voice_id npm run voice
+# Windows PowerShell
+$env:ELEVEN_API_KEY="sk_b41a7eab95d129dc2139845777058df15d83423732f9b4d7"; $env:ELEVEN_VOICE_ID="uYXf8XasLslADfZ2MB4u"; npm run voice
+```
+`npm run voice -- --dry` lists the clips without calling anything. Add `--video pitch`, `--only hook` or `--force` as needed.
+It writes `public/voice/<video>/<scene-id>.mp3` and warns if a clip is longer than its scene. Then set `HAS_VOICE` in `src/config.ts`.
