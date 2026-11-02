@@ -35,7 +35,7 @@ Three videos from one codebase:
 # Mac/Linux
 ELEVEN_API_KEY=your_key ELEVEN_VOICE_ID=your_female_voice_id npm run voice
 # Windows PowerShell
-$env:ELEVEN_API_KEY="sk_b41a7eab95d129dc2139845777058df15d83423732f9b4d7"; $env:ELEVEN_VOICE_ID="uYXf8XasLslADfZ2MB4u"; npm run voice
+$env:ELEVEN_API_KEY="sk_20029b76a40c657d8905f56969955b2e0c2a24d05e3428c0"; $env:ELEVEN_VOICE_ID="hpp4J3VqNfWAUOO0d1Us"; npm run voice
 ```
 `npm run voice -- --dry` lists the clips without calling anything. Add `--video pitch`, `--only hook` or `--force` as needed.
 It writes `public/voice/<video>/<scene-id>.mp3` and warns if a clip is longer than its scene. Then set `HAS_VOICE` in `src/config.ts`.
