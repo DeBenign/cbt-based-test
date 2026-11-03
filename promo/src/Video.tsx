@@ -2,9 +2,16 @@ import React from "react";
 import { AbsoluteFill, Audio, Sequence, interpolate, staticFile } from "remotion";
 import { Backdrop } from "./Layout";
 import {
-  HAS_MUSIC, HAS_VOICE, MUSIC_VOLUME_SOLO, MUSIC_VOLUME_WITH_VOICE, SceneId, TIMELINES, VideoKind, sec, totalFrames,
+  HAS_MUSIC, HAS_VOICE, MUSIC_VOLUME_SOLO, MUSIC_VOLUME_WITH_VOICE, ROLE_OF, SceneId, TIMELINES, VideoKind, sec, totalFrames,
 } from "./config";
 import { Hook } from "./scenes/Hook";
+import { Setup } from "./scenes/Setup";
+import { Curriculum } from "./scenes/Curriculum";
+import { AIQuestions } from "./scenes/AIQuestions";
+import { ExamBuilder } from "./scenes/ExamBuilder";
+import { Grading } from "./scenes/Grading";
+import { StudentResult } from "./scenes/StudentResult";
+import { Activity } from "./scenes/Activity";
 import { Onboarding } from "./scenes/Onboarding";
 import { Login } from "./scenes/Login";
 import { Exam } from "./scenes/Exam";
@@ -15,8 +22,10 @@ import { Mail } from "./scenes/Mail";
 import { Outro } from "./scenes/Outro";
 
 const SCENES: Record<SceneId, React.FC<{ tag?: string }>> = {
-  hook: Hook, onboarding: Onboarding, login: Login, exam: Exam, results: Results,
-  manualPay: ManualPay, onlinePay: OnlinePay, mail: Mail, outro: Outro,
+  hook: Hook, setup: Setup, onboarding: Onboarding, login: Login, curriculum: Curriculum,
+  aiQuestions: AIQuestions, examBuilder: ExamBuilder, exam: Exam, results: Results, grading: Grading,
+  studentResult: StudentResult, activity: Activity, manualPay: ManualPay, onlinePay: OnlinePay,
+  mail: Mail, outro: Outro,
 };
 
 export const Video: React.FC<{ kind: VideoKind }> = ({ kind }) => {
@@ -35,7 +44,7 @@ export const Video: React.FC<{ kind: VideoKind }> = ({ kind }) => {
         const Scene = SCENES[item.id];
         // numbered "Step n of N" labels only on the walkthrough video
         const stepIndex = steps.findIndex((x) => x.id === item.id);
-        const tag = kind === "demo" && stepIndex >= 0 ? `Step ${stepIndex + 1} of ${steps.length}` : undefined;
+        const tag = kind === "demo" && stepIndex >= 0 ? `Step ${stepIndex + 1} of ${steps.length} · ${ROLE_OF[item.id]}` : undefined;
         return (
           <Sequence key={item.id} from={start} durationInFrames={duration}>
             <Scene tag={tag} />

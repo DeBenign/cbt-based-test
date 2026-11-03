@@ -1,3 +1,14 @@
+// Generates every voiceover clip from voiceover/*.md using the ElevenLabs API.
+//
+//   ELEVEN_API_KEY=xxxx ELEVEN_VOICE_ID=yyyy npm run voice
+//
+// Options:
+//   --dry              parse and list the clips, call nothing
+//   --video pitch      only one video (pitch | teaser | demo)
+//   --only hook        only one scene id
+//   --force            overwrite clips that already exist (default: skip, saves credits)
+//
+// Output: public/voice/<video>/<scene-id>.mp3
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,9 +20,9 @@ const opt = (n) => (args.includes(`--${n}`) ? args[args.indexOf(`--${n}`) + 1] :
 
 const MODEL = process.env.ELEVEN_MODEL || "eleven_multilingual_v2";
 const SETTINGS = {
-  pitch: { stability: 0.5, similarity_boost: 0.8, style: 0.2 },
-  teaser: { stability: 0.35, similarity_boost: 0.8, style: 0.4 },
-  demo: { stability: 0.65, similarity_boost: 0.8, style: 0.1 },
+  pitch: { stability: 0.5, similarity_boost: 0.8, style: 0.2 },   // warm, confident
+  teaser: { stability: 0.35, similarity_boost: 0.8, style: 0.4 }, // upbeat, quick
+  demo: { stability: 0.65, similarity_boost: 0.8, style: 0.1 },   // calm, instructional
 };
 
 /** Read the markdown table: first cell = scene id, a cell like "10s" = length, last cell = script. */
@@ -30,38 +41,14 @@ function parse(video) {
   return clips;
 }
 
-async function listVoices(key) {
-  const res = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  const { voices } = await res.json();
-  const usable = voices.filter((v) => v.category !== "professional" && (v.labels?.gender || "").toLowerCase() === "female");
-  console.log("Female voices (premade work on the free plan; others may need a paid plan):\n");
-  for (const v of usable) {
-    const l = v.labels || {};
-    console.log(`${v.voice_id}  ${v.name.padEnd(14)} ${v.category.padEnd(10)} ${[l.accent, l.age, l.descriptive || l.use_case].filter(Boolean).join(", ")}`);
-  }
-}
-
 async function speak(clip, key, voiceId) {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
     method: "POST",
     headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
     body: JSON.stringify({ text: clip.text, model_id: MODEL, voice_settings: SETTINGS[clip.video] }),
   });
-  if (!res.ok) {
-    const err = new Error(`${res.status} ${await res.text()}`);
-    err.status = res.status;
-    throw err;
-  }
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return Buffer.from(await res.arrayBuffer());
-}
-
-const key = process.env.ELEVEN_API_KEY;
-
-if (flag("voices")) {
-  if (!key) { console.error("Set ELEVEN_API_KEY first."); process.exit(1); }
-  await listVoices(key);
-  process.exit(0);
 }
 
 const videos = opt("video") ? [opt("video")] : ["pitch", "teaser", "demo"];
@@ -74,9 +61,10 @@ if (flag("dry")) {
   process.exit(0);
 }
 
+const key = process.env.ELEVEN_API_KEY;
 const voiceId = process.env.ELEVEN_VOICE_ID;
 if (!key || !voiceId) {
-  console.error("Set ELEVEN_API_KEY and ELEVEN_VOICE_ID first.");
+  console.error("Set ELEVEN_API_KEY and ELEVEN_VOICE_ID first (see README).");
   process.exit(1);
 }
 
@@ -95,9 +83,5 @@ for (const c of clips) {
     console.log(`ok     ${c.video}/${c.id}.mp3  ~${estSeconds.toFixed(1)}s of ${c.seconds ?? "?"}s${long ? "  ⚠ too long: raise this scene in TIMELINES" : ""}`);
   } catch (e) {
     console.error(`FAILED ${c.video}/${c.id}: ${e.message}`);
-    if (e.status === 402 || e.status === 401) {
-      console.error("\nStopping: this voice or key can't be used via the API on your plan. Run `npm run voice -- --voices` and pick a premade voice, or upgrade.");
-      process.exit(1);
-    }
   }
 }

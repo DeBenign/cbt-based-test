@@ -31,6 +31,7 @@ export const CONTACT = {
 export const DEMO = {
   school: "Greenfield Academy",
   admin: "Mrs. Eze",
+  teacher: "Mrs. Adebayo",
   adminEmail: "admin@greenfield.sch.ng",
   student: "Adaeze Okafor",
   firstName: "Adaeze",
@@ -50,28 +51,40 @@ export const naira = (n: number) => "₦" + n.toString().replace(/\B(?=(\d{3})+(
 
 // ---- timelines (seconds per scene) ---------------------------
 export type SceneId =
-  | "hook" | "onboarding" | "login" | "exam" | "results"
+  | "hook" | "setup" | "onboarding" | "login" | "curriculum" | "aiQuestions" | "examBuilder"
+  | "exam" | "results" | "grading" | "studentResult" | "activity"
   | "manualPay" | "onlinePay" | "mail" | "outro";
+
+// Who is acting in each scene. Shown on the demo's "Step n of N · Role" label.
+export const ROLE_OF: Record<SceneId, string> = {
+  hook: "", outro: "", setup: "Admin", onboarding: "Admin", login: "Everyone",
+  curriculum: "Teacher", aiQuestions: "Teacher", examBuilder: "Teacher", exam: "Student",
+  results: "Teacher", grading: "Teacher", studentResult: "Student", activity: "Admin",
+  manualPay: "Platform owner", onlinePay: "Admin", mail: "Admin",
+};
 export type VideoKind = "pitch" | "teaser" | "demo";
 
 export const TIMELINES: Record<VideoKind, { id: SceneId; sec: number }[]> = {
-  // A. Pitch / investor explainer, 16:9, ~86s
+  // A. Pitch / investor explainer, 16:9, ~88s
   pitch: [
-    { id: "hook", sec: 9 }, { id: "onboarding", sec: 11 }, { id: "login", sec: 9 },
-    { id: "exam", sec: 12 }, { id: "results", sec: 9 }, { id: "manualPay", sec: 12 },
-    { id: "onlinePay", sec: 9 }, { id: "mail", sec: 8 }, { id: "outro", sec: 7 },
+    { id: "hook", sec: 9 }, { id: "onboarding", sec: 10 }, { id: "curriculum", sec: 8 },
+    { id: "aiQuestions", sec: 11 }, { id: "exam", sec: 11 }, { id: "results", sec: 8 },
+    { id: "manualPay", sec: 11 }, { id: "onlinePay", sec: 7 }, { id: "mail", sec: 7 },
+    { id: "outro", sec: 6 },
   ],
   // B. Social teaser, 9:16, ~30s
   teaser: [
-    { id: "hook", sec: 4 }, { id: "login", sec: 4.5 }, { id: "exam", sec: 5 },
-    { id: "manualPay", sec: 5 }, { id: "onlinePay", sec: 4 }, { id: "mail", sec: 4 },
-    { id: "outro", sec: 3.5 },
+    { id: "hook", sec: 5 }, { id: "login", sec: 4 }, { id: "aiQuestions", sec: 5 },
+    { id: "exam", sec: 4 }, { id: "manualPay", sec: 4.5 }, { id: "onlinePay", sec: 3 },
+    { id: "mail", sec: 3 }, { id: "outro", sec: 3 },
   ],
-  // C. Product demo walkthrough, 16:9, ~71s (numbered steps, no hook)
+  // C. Full product demo, 16:9, ~131s, numbered steps with the acting role (14 steps)
   demo: [
-    { id: "onboarding", sec: 10 }, { id: "login", sec: 9 }, { id: "exam", sec: 11 },
-    { id: "results", sec: 9 }, { id: "manualPay", sec: 11 }, { id: "onlinePay", sec: 8 },
-    { id: "mail", sec: 8 }, { id: "outro", sec: 5 },
+    { id: "setup", sec: 9 }, { id: "onboarding", sec: 9 }, { id: "login", sec: 8 },
+    { id: "curriculum", sec: 9 }, { id: "aiQuestions", sec: 12 }, { id: "examBuilder", sec: 11 },
+    { id: "exam", sec: 10 }, { id: "results", sec: 8 }, { id: "grading", sec: 8 },
+    { id: "studentResult", sec: 8 }, { id: "activity", sec: 10 }, { id: "manualPay", sec: 10 },
+    { id: "onlinePay", sec: 7 }, { id: "mail", sec: 7 }, { id: "outro", sec: 5 },
   ],
 };
 export const totalFrames = (k: VideoKind) =>
