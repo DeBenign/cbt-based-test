@@ -8,6 +8,8 @@ import { buildReceipt, ensureReceiptNo } from "../utils/receipt";
 import { applyPayment, voidPayment } from "../services/paymentService";
 import { ensureTrialDates, getAccessStatus, accessExpiry } from "../utils/schoolAccess";
 import { clearAccountCache } from "../utils/accountCheck";
+import { getMonthTotalsBySchool, effectiveLimit } from "../services/aiUsage";
+import { AI_MODEL } from "../services/questionGenerator";
 import { TERM_DAYS, MAX_TERMS_PER_PAYMENT, effectivePrice, termFee, onlinePaymentsEnabled } from "../utils/billingConfig";
 
 const TRIAL_DAYS = 90; // ~one term -- change this one line if your terms run differently
@@ -45,6 +47,7 @@ export async function createSchool(req: AuthedRequest, res: Response) {
 
 export async function listSchools(_req: AuthedRequest, res: Response) {
   const schools = await School.find().sort({ createdAt: -1 });
+  const aiTotals = await getMonthTotalsBySchool();
   const withDetails = await Promise.all(
     schools.map(async (s) => {
       const admins = await User.find({ schoolId: s._id, role: "admin" }).select("name email");
@@ -65,11 +68,34 @@ export async function listSchools(_req: AuthedRequest, res: Response) {
         hasCustomPrice: !!s.pricePerStudent,
         termFee: termFee(studentCount, s.pricePerStudent),
         adminCount: admins.length,
-        admins: admins.map((a) => ({ name: a.name, email: a.email }))
+        admins: admins.map((a) => ({ name: a.name, email: a.email })),
+        aiLimit: effectiveLimit(s.aiMonthlyLimit),
+        hasCustomAiLimit: typeof s.aiMonthlyLimit === "number",
+        aiUsedThisMonth: aiTotals.get(String(s._id))?.used ?? 0,
+        aiRequestsThisMonth: aiTotals.get(String(s._id))?.requests ?? 0,
+        aiCostUsdThisMonth: Math.round((aiTotals.get(String(s._id))?.costUsd ?? 0) * 10000) / 10000,
+        aiModel: AI_MODEL
       };
     })
   );
   res.json(withDetails);
+}
+
+// Superadmin sets how many AI questions one school may keep per month.
+// limit = null puts the school back on the platform default; 0 switches AI off for it.
+export async function setSchoolAiLimit(req: AuthedRequest, res: Response) {
+  const { limit } = req.body as { limit?: number | null };
+  let update: Record<string, unknown>;
+  if (limit === null || limit === undefined) {
+    update = { $unset: { aiMonthlyLimit: 1 } };
+  } else if (Number.isInteger(limit) && limit >= 0 && limit <= 100000) {
+    update = { $set: { aiMonthlyLimit: limit } };
+  } else {
+    return res.status(400).json({ error: "The limit must be a whole number from 0 to 100,000, or empty for the default." });
+  }
+  const school = await School.findByIdAndUpdate(req.params.id, update, { new: true });
+  if (!school) return res.status(404).json({ error: "School not found" });
+  res.json({ aiLimit: effectiveLimit(school.aiMonthlyLimit), hasCustomAiLimit: typeof school.aiMonthlyLimit === "number" });
 }
 
 export async function setSchoolActive(req: AuthedRequest, res: Response) {
@@ -118,7 +144,8 @@ export async function recordPayment(req: AuthedRequest, res: Response) {
       message: "Payment recorded",
       subscriptionPaidUntil: result.subscriptionPaidUntil,
       paymentId: result.paymentId,
-      receiptNo: result.receiptNo
+      receiptNo: result.receiptNo,
+      receiptEmail: result.receiptEmail
     });
   } catch (err: any) {
     res.status(400).json({ error: err.message });

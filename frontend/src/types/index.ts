@@ -36,6 +36,8 @@ export interface Question {
   curriculumTag?: string;
   reviewStatus?: "draft" | "approved";
   source?: "manual" | "ai";
+  curriculumId?: string;
+  aiCheck?: { status: "agreed" | "disagreed" | "unclear"; note?: string };
 }
 
 export interface CurriculumItem {

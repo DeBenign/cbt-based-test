@@ -69,9 +69,13 @@ export async function updateQuestion(req: AuthedRequest, res: Response) {
   const update: Record<string, unknown> = {};
   for (const key of allowed) if (key in req.body) update[key] = req.body[key];
 
+  // Editing the wording or options makes an earlier AI second-check out of date, so it is cleared.
+  const mongoUpdate: Record<string, unknown> = { $set: update };
+  if ("questionText" in update || "options" in update) mongoUpdate.$unset = { aiCheck: 1 };
+
   const question = await Question.findOneAndUpdate(
     { _id: req.params.id, schoolId: req.user!.schoolId },
-    update,
+    mongoUpdate,
     { new: true, runValidators: true }
   );
   res.json(question);

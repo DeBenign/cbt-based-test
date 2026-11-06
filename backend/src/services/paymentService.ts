@@ -4,6 +4,7 @@ import AuditLog from "../models/AuditLog";
 import { TERM_DAYS } from "../utils/billingConfig";
 import { nextReceiptNo } from "../utils/receipt";
 import { clearAccountCache } from "../utils/accountCheck";
+import { sendPaymentReceipt } from "./paymentEmail";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -16,7 +17,7 @@ export async function applyPayment(params: {
   paidUntil?: Date; // optional exact end date, to line access up with the school's real term end
   method: "nomba" | "manual";
   confirmedBy?: string;
-}): Promise<{ subscriptionPaidUntil: Date; paymentId: string; receiptNo: string } | { alreadyProcessed: true }> {
+}): Promise<{ subscriptionPaidUntil: Date; paymentId: string; receiptNo: string; receiptEmail?: { sent: number; failed: number; skipped?: string } } | { alreadyProcessed: true }> {
   const existingRef = await Payment.findOne({ reference: params.reference });
   if (existingRef) return { alreadyProcessed: true };
 
@@ -52,7 +53,20 @@ export async function applyPayment(params: {
   school.subscriptionStatus = "active";
   await school.save();
 
-  return { subscriptionPaidUntil: paidUntil, paymentId: payment._id.toString(), receiptNo };
+  // Cash and Nomba both come through here, so one email covers both. A repeat webhook
+  // returns early above, so a payment is never emailed twice.
+  const receiptEmail = await sendPaymentReceipt({
+    schoolId: params.schoolId,
+    schoolName: school.name,
+    receiptNo,
+    amount: params.amount,
+    terms: params.terms,
+    termLabel: params.termLabel,
+    method: params.method,
+    paidUntil
+  });
+
+  return { subscriptionPaidUntil: paidUntil, paymentId: payment._id.toString(), receiptNo, receiptEmail };
 }
 
 // ---- undo ----

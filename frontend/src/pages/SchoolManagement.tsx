@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../services/api";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
+import DaysLeftBadge from "../components/DaysLeftBadge";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 
@@ -23,6 +24,12 @@ interface SchoolRow {
   termFee: number;
   adminCount: number;
   admins: { name: string; email: string }[];
+  aiLimit: number;
+  hasCustomAiLimit: boolean;
+  aiUsedThisMonth: number;
+  aiRequestsThisMonth: number;
+  aiCostUsdThisMonth: number;
+  aiModel: string;
 }
 
 interface PaymentItem {
@@ -40,10 +47,13 @@ interface PaymentItem {
   canVoid: boolean;
 }
 
-function expiryText(days: number): string {
-  if (days < 0) return `ended ${-days} day${days === -1 ? "" : "s"} ago`;
-  if (days === 0) return "ends today";
-  return `ends in ${days} day${days === 1 ? "" : "s"}`;
+function receiptEmailNote(r?: { sent: number; failed: number; skipped?: string }): string {
+  if (!r) return "";
+  if (r.skipped === "mail-not-configured") return "Receipt email not sent: mail isn't set up on the server.";
+  if (r.skipped === "no-admin-email") return "Receipt email not sent: this school's admin has no email address.";
+  if (r.sent > 0 && r.failed === 0) return `Receipt emailed to ${r.sent} admin${r.sent === 1 ? "" : "s"}.`;
+  if (r.sent > 0) return `Receipt emailed to ${r.sent}, but ${r.failed} failed.`;
+  return "Receipt email could not be sent.";
 }
 
 interface PaymentDraft {
@@ -77,6 +87,7 @@ export default function SchoolManagement() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, PaymentDraft>>({});
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [aiLimitDrafts, setAiLimitDrafts] = useState<Record<string, string>>({});
   const [paymentMessages, setPaymentMessages] = useState<Record<string, string>>({});
   const [payments, setPayments] = useState<Record<string, PaymentItem[]>>({});
   const [voidingId, setVoidingId] = useState<string | null>(null);
@@ -158,7 +169,7 @@ export default function SchoolManagement() {
         termLabel: d.termLabel.trim() || undefined,
         paidUntil: d.paidUntil ? new Date(`${d.paidUntil}T23:59:59`).toISOString() : undefined
       });
-      setPaymentMessages((prev) => ({ ...prev, [id]: `${res.data.message} (receipt ${res.data.receiptNo}) — access until ${new Date(res.data.subscriptionPaidUntil).toLocaleDateString()}` }));
+      setPaymentMessages((prev) => ({ ...prev, [id]: `${res.data.message} (receipt ${res.data.receiptNo}) — access until ${new Date(res.data.subscriptionPaidUntil).toLocaleDateString()}. ${receiptEmailNote(res.data.receiptEmail)}` }));
       setPaymentDrafts((prev) => ({ ...prev, [id]: EMPTY_DRAFT }));
       await Promise.all([loadSchools(), loadPayments(id)]);
     } catch (err: any) {
@@ -175,6 +186,18 @@ export default function SchoolManagement() {
       await loadSchools();
     } catch (err: any) {
       setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't save the price." }));
+    }
+  }
+
+  async function handleSaveAiLimit(id: string) {
+    const raw = (aiLimitDrafts[id] ?? "").trim();
+    try {
+      await api.put(`/schools/${id}/ai-limit`, { limit: raw === "" ? null : Number(raw) });
+      setPaymentMessages((prev) => ({ ...prev, [id]: raw === "" ? "AI allowance reset to the platform default." : `AI allowance set to ${Number(raw).toLocaleString()} questions per month.` }));
+      setAiLimitDrafts((prev) => ({ ...prev, [id]: "" }));
+      await loadSchools();
+    } catch (err: any) {
+      setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't save the AI allowance." }));
     }
   }
 
@@ -219,6 +242,9 @@ export default function SchoolManagement() {
         <input type="checkbox" checked={onlyEnding} onChange={(e) => setOnlyEnding(e.target.checked)} />
         Only schools whose access ends within 30 days (or already ended)
       </label>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+        {schools.filter((s) => s.accessDaysLeft <= 30).length} of {schools.length} school(s) end within 30 days or have already ended.
+      </p>
       {schools.filter((s) => !onlyEnding || s.accessDaysLeft <= 30).map((s) => {
         const isExpanded = expandedId === s.id;
         const badge = billingBadge(s);
@@ -235,10 +261,11 @@ export default function SchoolManagement() {
               <div>
                 <p style={{ fontWeight: 500 }}>{s.name}</p>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                  {s.address || "No address"} · {s.adminCount} admin{s.adminCount !== 1 ? "s" : ""} · access {expiryText(s.accessDaysLeft)}
+                  {s.address || "No address"} · {s.adminCount} admin{s.adminCount !== 1 ? "s" : ""} · access ends {new Date(s.accessEndsAt).toLocaleDateString()}
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <DaysLeftBadge days={s.accessDaysLeft} />
                 <Badge tone={badge.tone}>{badge.label}</Badge>
                 <button
                   onClick={(e) => {
@@ -278,6 +305,23 @@ export default function SchoolManagement() {
                       style={{ flex: 1 }}
                     />
                     <button type="button" onClick={() => handleSavePrice(s.id)} style={{ padding: "3px 10px" }}>Save price</button>
+                  </div>
+
+                  <p style={{ fontWeight: 500, marginBottom: 4, color: "var(--text-primary)" }}>AI questions this month</p>
+                  <p style={{ marginBottom: 6 }}>
+                    <strong>{s.aiUsedThisMonth}</strong> of {s.aiLimit.toLocaleString()} used{s.hasCustomAiLimit ? " (custom allowance)" : " (default allowance)"}
+                    {" "}· {s.aiRequestsThisMonth} request{s.aiRequestsThisMonth === 1 ? "" : "s"} · est. cost ${s.aiCostUsdThisMonth.toFixed(4)} ({s.aiModel})
+                  </p>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                    <input
+                      placeholder="Questions per month — empty = default, 0 = AI off"
+                      type="number"
+                      min={0}
+                      value={aiLimitDrafts[s.id] ?? ""}
+                      onChange={(e) => setAiLimitDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                      style={{ flex: 1 }}
+                    />
+                    <button type="button" onClick={() => handleSaveAiLimit(s.id)} style={{ padding: "3px 10px" }}>Save allowance</button>
                   </div>
 
                   <p style={{ fontWeight: 500, marginBottom: 6, color: "var(--text-primary)" }}>Record a payment (cash or transfer)</p>

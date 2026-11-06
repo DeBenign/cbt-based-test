@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import BrandLogo from "./BrandLogo";
 import Navbar from "./Navbar";
+import DaysLeftBadge from "./DaysLeftBadge";
+import Badge from "./Badge";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -28,7 +30,7 @@ const REMINDER_WINDOW_DAYS = 14;
 export default function AppLayout() {
   const { user } = useAuth();
   const { pathname } = useLocation();
-  const [expiry, setExpiry] = useState<{ daysLeft: number; paid: boolean } | null>(null);
+  const [expiry, setExpiry] = useState<{ daysLeft: number; paid: boolean; blocked: boolean; endsAt: string } | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -46,15 +48,13 @@ export default function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, user?.mustChangePassword]);
 
-  // School admins get a heads-up in the app as access nears its end
-  // (the email reminder is a second channel for the same thing).
+  // School admins always see how long their access has left (header chip), and get
+  // a stronger banner in the last two weeks. The email reminder is a second channel.
   useEffect(() => {
     if (user?.role !== "admin" || user.mustChangePassword) return;
     api.get("/billing/status").then((res) => {
       const d = res.data;
-      if (!d.accessBlocked && d.accessDaysLeft <= REMINDER_WINDOW_DAYS) {
-        setExpiry({ daysLeft: d.accessDaysLeft, paid: !!d.isPaidActive });
-      }
+      setExpiry({ daysLeft: d.accessDaysLeft, paid: !!d.isPaidActive, blocked: !!d.accessBlocked, endsAt: d.accessEndsAt });
     }).catch(() => { /* not important enough to interrupt the page */ });
   }, [user?.role, user?.mustChangePassword]);
 
@@ -90,7 +90,7 @@ export default function AppLayout() {
           You're offline. The app still works, but anything needing a connection — saving, submitting, loading new data — will wait until you're back online.
         </div>
       )}
-      {expiry && (
+      {expiry && !expiry.blocked && expiry.daysLeft <= REMINDER_WINDOW_DAYS && (
         <div style={{ padding: "8px 24px", fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", textAlign: "center" }}>
           Your school's {expiry.paid ? "subscription" : "free trial"}{" "}
           {expiry.daysLeft <= 1 ? "ends within a day" : `ends in ${expiry.daysLeft} days`}. After that, teachers and students can't sign in.{" "}
@@ -98,8 +98,15 @@ export default function AppLayout() {
         </div>
       )}
       {user && (
-        <div style={{ padding: "10px 24px", fontSize: 13, color: "var(--text-secondary)", borderBottom: "0.5px solid var(--border)" }}>
-          Welcome back, {user.name}
+        <div style={{ padding: "10px 24px", fontSize: 13, color: "var(--text-secondary)", borderBottom: "0.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span>Welcome back, {user.name}</span>
+          {user.role === "admin" && expiry && (
+            <Link to="/admin/billing" title={`Access ends ${new Date(expiry.endsAt).toLocaleDateString()}`} style={{ textDecoration: "none" }}>
+              {expiry.blocked
+                ? <Badge tone="danger">Access locked</Badge>
+                : <DaysLeftBadge days={expiry.daysLeft} kind={expiry.paid ? "paid" : "trial"} />}
+            </Link>
+          )}
         </div>
       )}
       <Outlet />

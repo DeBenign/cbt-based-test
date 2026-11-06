@@ -10,6 +10,7 @@ import Badge from "../components/Badge";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import Spinner from "../components/Spinner";
+import AiUsageMeter, { AiUsage } from "../components/AiUsageMeter";
 
 function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected: boolean; onToggle: () => void; onChanged: () => void }) {
   const confirm = useConfirm();
@@ -19,6 +20,28 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
   const [guide, setGuide] = useState(q.correctAnswerText || "");
   const [marks, setMarks] = useState(q.marks);
   const [error, setError] = useState<string | null>(null);
+  const [regenBusy, setRegenBusy] = useState(false);
+
+  // After "Regenerate" the draft keeps its id but has new content, so refresh the edit fields.
+  useEffect(() => {
+    setText(q.questionText);
+    setOptions(q.options);
+    setGuide(q.correctAnswerText || "");
+    setMarks(q.marks);
+  }, [q]);
+
+  async function regenerate() {
+    setError(null);
+    setRegenBusy(true);
+    try {
+      await api.post(`/questions/${q._id}/regenerate`, {}, { timeout: 70000 });
+      onChanged();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Couldn't regenerate this question.");
+    } finally {
+      setRegenBusy(false);
+    }
+  }
 
   async function save() {
     setError(null);
@@ -47,6 +70,7 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
   }
 
   async function approveOne() {
+    if (q.aiCheck && q.aiCheck.status !== "agreed" && !(await confirm("The second check flagged this question. Approve it anyway?"))) return;
     await api.post("/questions/drafts/approve", { ids: [q._id] });
     onChanged();
   }
@@ -61,7 +85,15 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
             <Badge>{q.difficulty}</Badge>
             <Badge>{q.marks} mark{q.marks === 1 ? "" : "s"}</Badge>
             <Badge>{q.topic.length > 30 ? `${q.topic.slice(0, 30)}…` : q.topic}</Badge>
+            {q.aiCheck?.status === "agreed" && <Badge tone="success">Second check agrees</Badge>}
+            {q.aiCheck?.status === "disagreed" && <Badge tone="danger">Second check disagrees — review</Badge>}
+            {q.aiCheck?.status === "unclear" && <Badge tone="warning">Second check unsure — review</Badge>}
           </div>
+          {q.aiCheck && q.aiCheck.status !== "agreed" && q.aiCheck.note && !editing && (
+            <p style={{ fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", padding: 8, borderRadius: "var(--radius)", marginBottom: 8 }}>
+              {q.aiCheck.note}
+            </p>
+          )}
 
           {!editing ? (
             <>
@@ -95,9 +127,9 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
               )}
               <label>Marks</label>
               <input type="number" min={1} value={marks} onChange={(e) => setMarks(Number(e.target.value))} style={{ width: 90, marginBottom: 8 }} />
-              {error && <p style={{ color: "var(--text-danger)", fontSize: 13 }}>{error}</p>}
             </div>
           )}
+          {error && <p style={{ color: "var(--text-danger)", fontSize: 13 }}>{error}</p>}
 
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             {editing ? (
@@ -109,6 +141,11 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
               <>
                 <PrimaryButton type="button" onClick={approveOne} style={{ padding: "4px 14px", fontSize: 12 }}>Approve</PrimaryButton>
                 <button type="button" onClick={() => setEditing(true)} style={{ padding: "4px 14px", fontSize: 12 }}>Edit</button>
+                {q.curriculumId && (
+                  <button type="button" onClick={regenerate} disabled={regenBusy} style={{ padding: "4px 14px", fontSize: 12 }}>
+                    {regenBusy ? <><Spinner size={12} />Replacing…</> : "Regenerate"}
+                  </button>
+                )}
                 <button type="button" onClick={discard} style={{ padding: "4px 14px", fontSize: 12 }}>Discard</button>
               </>
             )}
@@ -121,6 +158,7 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
 
 export default function AIQuestions() {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const rolePath = useRolePath();
 
   const [classes, setClasses] = useState<ClassRoom[]>([]);
@@ -133,7 +171,9 @@ export default function AIQuestions() {
   const [mcqCount, setMcqCount] = useState(10);
   const [theoryCount, setTheoryCount] = useState(0);
   const [theoryMarks, setTheoryMarks] = useState(5);
-  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("mixed");
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "mixed" | "custom">("mixed");
+  const [mix, setMix] = useState({ easy: 4, medium: 4, hard: 2 });
+  const [usage, setUsage] = useState<AiUsage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -141,6 +181,10 @@ export default function AIQuestions() {
 
   const mine = curricula.filter((c) => c.classId === classId);
   const chosen = curricula.find((c) => c._id === curriculumId);
+  const total = mcqCount + theoryCount;
+  const mixTotal = mix.easy + mix.medium + mix.hard;
+  const mixOk = difficulty !== "custom" || mixTotal === total;
+  const outOfAllowance = !!usage && usage.remaining < total;
   const subjectName = (id?: string) => subjects.find((s) => s._id === id)?.name || "";
 
   async function loadDrafts() {
@@ -149,6 +193,11 @@ export default function AIQuestions() {
     setDrafts((res.data as Question[]).filter((q) => user?.subjectIds?.includes(q.subjectId)));
     setSelected(new Set());
   }
+
+  async function loadUsage() {
+    try { setUsage((await api.get("/questions/ai-usage")).data); } catch { /* the meter is optional */ }
+  }
+  const refresh = async () => { await Promise.all([loadDrafts(), loadUsage()]); };
 
   useEffect(() => {
     (async () => {
@@ -159,7 +208,7 @@ export default function AIQuestions() {
       const first = (cur.data as CurriculumItem[])[0];
       if (first) { setClassId(first.classId); setCurriculumId(first._id); }
       else if (c.data[0]) setClassId(c.data[0]._id);
-      await loadDrafts();
+      await Promise.all([loadDrafts(), loadUsage()]);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -171,7 +220,7 @@ export default function AIQuestions() {
 
   useEffect(() => { setTopicIdx([]); }, [curriculumId]);
 
-  async function generate() {
+  async function generate(): Promise<boolean> {
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -182,27 +231,45 @@ export default function AIQuestions() {
         mcqCount,
         theoryCount,
         theoryMarks,
-        difficulty
+        difficulty: difficulty === "custom" ? "mixed" : difficulty,
+        difficultyMix: difficulty === "custom" ? mix : undefined
       }, { timeout: 70000 });
-      const { drafts: made, rejected, requested } = res.data;
+      const { drafts: made, rejected, requested, duplicates = 0, flagged = 0 } = res.data;
       setNotice(
         `${made.length} draft question(s) ready for review below.` +
+        (flagged > 0 ? ` ${flagged} ${flagged === 1 ? "was" : "were"} flagged by the second check — look at ${flagged === 1 ? "it" : "them"} first.` : "") +
+        (duplicates > 0 ? ` ${duplicates} repeated questions already in your bank and ${duplicates === 1 ? "was" : "were"} skipped.` : "") +
         (rejected > 0 ? ` ${rejected} of ${requested} didn't pass the quality check and were left out — generate again for more.` : "")
       );
-      await loadDrafts();
+      await refresh();
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || "Couldn't generate questions. Please try again.");
+      await loadUsage();
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
+  // Throw the current drafts away and write a fresh batch with the settings above.
+  // The allowance and the difficulty split are checked first, so nothing is discarded for a run that can't happen.
+  async function regenerateAll() {
+    if (!mixOk) { setError(`The difficulty split adds up to ${mixTotal}, but you asked for ${total} questions.`); return; }
+    if (usage && usage.remaining < total) { setError(`Your school has only ${usage.remaining} AI question(s) left this month, not enough for a new batch of ${total}.`); return; }
+    if (!(await confirm(`Discard all ${drafts.length} draft(s) and generate a new batch of ${total} with the settings above? Approved questions are not touched.`))) return;
+    await api.post("/questions/drafts/discard", { ids: drafts.map((d) => d._id) });
+    await generate();
+  }
+
   async function approveSelected(all = false) {
     const ids = all ? drafts.map((d) => d._id) : Array.from(selected);
     if (ids.length === 0) return;
+    const flagged = drafts.filter((d) => ids.includes(d._id) && d.aiCheck && d.aiCheck.status !== "agreed").length;
+    if (flagged > 0 && !(await confirm(`${flagged} of these ${flagged === 1 ? "was" : "were"} flagged by the second check. Approve ${flagged === 1 ? "it" : "them"} anyway?`))) return;
     await api.post("/questions/drafts/approve", { ids });
     setNotice(`${ids.length} question(s) approved and added to your question bank.`);
-    await loadDrafts();
+    await refresh();
   }
 
   function toggle(id: string) {
@@ -220,6 +287,8 @@ export default function AIQuestions() {
         Questions are written from the curriculum you choose and saved as <b>drafts</b>. Check each one — the AI can make mistakes —
         then approve it into your question bank. Drafts can't be used in an exam until approved.
       </p>
+
+      <AiUsageMeter usage={usage} />
 
       {curricula.length === 0 ? (
         <Card>
@@ -269,15 +338,25 @@ export default function AIQuestions() {
             <div>
               <label>Difficulty</label>
               <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as any)}>
-                <option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
+                <option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="custom">Custom split…</option>
               </select>
             </div>
           </div>
+          {difficulty === "custom" && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+              <div><label>Easy</label><input type="number" min={0} value={mix.easy} onChange={(e) => setMix({ ...mix, easy: Number(e.target.value) })} style={{ width: 80 }} /></div>
+              <div><label>Medium</label><input type="number" min={0} value={mix.medium} onChange={(e) => setMix({ ...mix, medium: Number(e.target.value) })} style={{ width: 80 }} /></div>
+              <div><label>Hard</label><input type="number" min={0} value={mix.hard} onChange={(e) => setMix({ ...mix, hard: Number(e.target.value) })} style={{ width: 80 }} /></div>
+              <p style={{ fontSize: 13, color: mixOk ? "var(--text-secondary)" : "var(--text-danger)", margin: 0 }}>
+                {mixTotal} of {total} question{total === 1 ? "" : "s"} assigned{mixOk ? "" : " — the split must add up to the number you asked for"}
+              </p>
+            </div>
+          )}
           <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Up to 15 questions per run. Run it again for more.</p>
 
           {error && <p style={{ color: "var(--text-danger)", fontSize: 13 }}>{error}</p>}
-          <PrimaryButton type="button" onClick={generate} disabled={busy || !curriculumId || mcqCount + theoryCount === 0}>
-            {busy ? <><Spinner size={14} />Writing questions… (up to a minute)</> : "Generate drafts"}
+          <PrimaryButton type="button" onClick={() => { void generate(); }} disabled={busy || !curriculumId || total === 0 || !mixOk || outOfAllowance}>
+            {busy ? <><Spinner size={14} />Writing questions… (up to a minute)</> : outOfAllowance ? "Not enough AI allowance left" : "Generate drafts"}
           </PrimaryButton>
         </Card>
       )}
@@ -287,7 +366,8 @@ export default function AIQuestions() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
         <h3 style={{ marginBottom: 0 }}>Drafts waiting for review ({drafts.length})</h3>
         {drafts.length > 0 && (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" disabled={busy || !curriculumId} onClick={regenerateAll}>Regenerate all</button>
             <button type="button" disabled={selected.size === 0} onClick={() => approveSelected(false)}>Approve selected ({selected.size})</button>
             <PrimaryButton type="button" onClick={() => approveSelected(true)}>Approve all</PrimaryButton>
           </div>
@@ -295,7 +375,7 @@ export default function AIQuestions() {
       </div>
       {drafts.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No drafts waiting.</p>}
       {drafts.map((q) => (
-        <DraftCard key={q._id} q={q} selected={selected.has(q._id)} onToggle={() => toggle(q._id)} onChanged={loadDrafts} />
+        <DraftCard key={q._id} q={q} selected={selected.has(q._id)} onToggle={() => toggle(q._id)} onChanged={refresh} />
       ))}
     </PageShell>
   );

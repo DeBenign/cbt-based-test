@@ -13,6 +13,7 @@ export interface ISchool extends Document {
   trialEndsAt: Date;
   subscriptionStatus: "trial" | "active" | "expired";
   subscriptionPaidUntil?: Date;
+  aiMonthlyLimit?: number; // optional per-school cap on AI questions per month; unset = platform default
   pricePerStudent?: number; // optional per-school override of the default per-student term price
   branding: ISchoolBranding;
   reminderKeysSent?: string[]; // which expiry reminders have already been emailed
@@ -26,6 +27,7 @@ const schoolSchema = new Schema<ISchool>({
   trialEndsAt: { type: Date, required: true },
   subscriptionStatus: { type: String, enum: ["trial", "active", "expired"], default: "trial" },
   subscriptionPaidUntil: Date,
+  aiMonthlyLimit: Number,
   pricePerStudent: Number,
   branding: {
     logoUrl: String,

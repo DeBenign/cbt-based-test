@@ -4,6 +4,8 @@ import api from "../services/api";
 import { useRolePath } from "../hooks/useRolePath";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
+import DaysLeftBadge from "../components/DaysLeftBadge";
+import AiUsageMeter, { AiUsage } from "../components/AiUsageMeter";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import Spinner from "../components/Spinner";
@@ -25,6 +27,8 @@ interface BillingStatus {
   subscriptionStatus: string;
   trialEndsAt: string;
   trialDaysLeft: number;
+  accessEndsAt: string;
+  accessDaysLeft: number;
   isTrialActive: boolean;
   subscriptionPaidUntil?: string;
   isPaidActive: boolean;
@@ -54,6 +58,7 @@ export default function Billing() {
   const [terms, setTerms] = useState(1);
   const [payError, setPayError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const rolePath = useRolePath();
 
   useEffect(() => {
@@ -61,6 +66,7 @@ export default function Billing() {
       .get("/billing/status")
       .then((res) => setStatus(res.data))
       .catch((err) => setError(err.response?.data?.error || "Couldn't load billing status."));
+    api.get("/billing/ai-usage").then((res) => setAiUsage(res.data)).catch(() => { /* optional */ });
   }, []);
 
   async function handlePay(e: FormEvent) {
@@ -98,6 +104,15 @@ export default function Billing() {
     <PageShell maxWidth={520}>
       <h1>Billing</h1>
 
+      {aiUsage && (
+        <Card style={{ marginBottom: 20 }}>
+          <AiUsageMeter usage={aiUsage} />
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+            Your teachers' AI question allowance. Need more? Ask Benchmark to raise it.
+          </p>
+        </Card>
+      )}
+
       <Card style={{ marginBottom: 20 }}>
         {status.accessBlocked ? (
           <>
@@ -113,14 +128,18 @@ export default function Billing() {
           </>
         ) : status.isPaidActive ? (
           <>
-            <Badge tone="success">Active subscription</Badge>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Badge tone="success">Active subscription</Badge>
+              <DaysLeftBadge days={status.accessDaysLeft} kind="paid" />
+            </div>
             <p style={{ marginTop: 10, marginBottom: 0 }}>
-              Paid through <strong>{new Date(status.subscriptionPaidUntil!).toLocaleDateString()}</strong>.
+              Paid through <strong>{new Date(status.subscriptionPaidUntil!).toLocaleDateString()}</strong>
+              {" "}({status.accessDaysLeft} day{status.accessDaysLeft === 1 ? "" : "s"} from today).
             </p>
           </>
         ) : (
           <>
-            <Badge tone="warning">Free trial — {status.trialDaysLeft} day{status.trialDaysLeft === 1 ? "" : "s"} left</Badge>
+            <DaysLeftBadge days={status.accessDaysLeft} kind="trial" />
             <p style={{ marginTop: 10, marginBottom: 0 }}>
               Trial ends <strong>{new Date(status.trialEndsAt).toLocaleDateString()}</strong>. After that, teachers and
               students can't sign in until the school pays for a term.
