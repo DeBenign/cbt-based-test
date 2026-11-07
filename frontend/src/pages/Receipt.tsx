@@ -17,6 +17,9 @@ interface ReceiptData {
   terms: number | null;
   termLabel: string | null;
   accessUntil: string | null;
+  accessFrom: string | null;
+  daysGranted: number | null;
+  daysLeft: number | null;
   status: "applied" | "voided";
   voidedAt: string | null;
   voidReason: string | null;
@@ -72,7 +75,9 @@ export default function Receipt() {
               <tr><td style={cell}>For</td><td style={{ ...cell, textAlign: "right" }}>{[data.termLabel, data.terms ? `${data.terms} term${data.terms === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") || "Subscription"}</td></tr>
               <tr><td style={cell}>Method</td><td style={{ ...cell, textAlign: "right" }}>{data.method === "nomba" ? "Online (Nomba)" : "Cash / bank transfer"}</td></tr>
               <tr><td style={cell}>Reference</td><td style={{ ...cell, textAlign: "right" }}>{data.reference}</td></tr>
-              {data.accessUntil && <tr><td style={cell}>Access paid until</td><td style={{ ...cell, textAlign: "right" }}>{fmtDate(data.accessUntil)}</td></tr>}
+              {data.daysGranted ? <tr><td style={cell}>Days added</td><td style={{ ...cell, textAlign: "right" }}>{data.daysGranted} days{data.accessFrom ? ` (from ${fmtDate(data.accessFrom)})` : ""}</td></tr> : null}
+              {data.accessUntil && <tr><td style={cell}>Access runs until</td><td style={{ ...cell, textAlign: "right" }}><b>{fmtDate(data.accessUntil)}</b></td></tr>}
+              {data.daysLeft !== null && <tr><td style={cell}>Days left (today)</td><td style={{ ...cell, textAlign: "right" }}>{data.daysLeft}</td></tr>}
               {data.voidReason && <tr><td style={cell}>Cancellation reason</td><td style={{ ...cell, textAlign: "right" }}>{data.voidReason}</td></tr>}
             </tbody>
           </table>

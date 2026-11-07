@@ -8,6 +8,9 @@ import User from "../models/User";
 import { generateQuestions, checkDifficultyMix, AiNotConfiguredError, AiAccountError, DifficultyMix, GenerateParams } from "../services/questionGenerator";
 import { filterDuplicates } from "../services/questionDedupe";
 import { verifyMcqs, AiCheck } from "../services/answerCheck";
+import AiUsage from "../models/AiUsage";
+import QuestionReport from "../models/QuestionReport";
+import { summariseGeneration, validateReport } from "../services/aiHistory";
 import { schoolAllowance, recordUsage, limitMessage } from "../services/aiUsage";
 import { logActivity } from "../utils/activity";
 
@@ -118,12 +121,17 @@ export async function generateDraftQuestions(req: AuthedRequest, res: Response) 
   const verified = await verifyMcqs(kept, { subjectName: subject?.name || "the subject", className: cls?.name || "the class" });
 
   // Tokens were spent whether or not anything survived, so record before answering.
-  await recordUsage({
+  const generationId = await recordUsage({
     schoolId: req.user!.schoolId, userId: req.user!.userId, curriculumId, kind: "generate",
     modelName: generated.usage.model,
     inputTokens: generated.usage.inputTokens + verified.inputTokens,
     outputTokens: generated.usage.outputTokens + verified.outputTokens,
-    requested: mcqCount + theoryCount, saved: kept.length, rejected: generated.rejected + duplicates.length
+    requested: mcqCount + theoryCount, saved: kept.length, rejected: generated.rejected + duplicates.length,
+    summary: `${cls?.name || "Class"} · ${subject?.name || "Subject"} · ${curriculum.title}`,
+    params: {
+      curriculumId, topicIndexes: Array.isArray(topicIndexes) && topicIndexes.length > 0 ? topicIndexes : undefined,
+      mcqCount, theoryCount, theoryMarks, difficulty: difficulty || "mixed", difficultyMix: mix
+    }
   });
 
   if (kept.length === 0) {
@@ -137,6 +145,7 @@ export async function generateDraftQuestions(req: AuthedRequest, res: Response) 
   const drafts = await Question.insertMany(
     kept.map((q, i) => ({
       ...withCheck(verified.checks[i]),
+      ...(generationId ? { generationId } : {}),
       schoolId: req.user!.schoolId,
       subjectId: curriculum.subjectId,
       classId: curriculum.classId,
@@ -281,4 +290,84 @@ export async function discardDrafts(req: AuthedRequest, res: Response) {
   });
 
   res.json({ discarded: result.deletedCount });
+}
+
+// ---- history ------------------------------------------------------------------
+
+// The teacher's own recent generation runs, newest first, with what became of each run's questions.
+export async function listAiHistory(req: AuthedRequest, res: Response) {
+  const rows = await AiUsage.find({ schoolId: req.user!.schoolId, userId: req.user!.userId })
+    .sort({ createdAt: -1 }).limit(40).lean();
+
+  const ids = rows.filter((r) => r.kind === "generate").map((r) => r._id);
+  const counts = await Question.aggregate([
+    { $match: { generationId: { $in: ids } } },
+    { $group: { _id: { g: "$generationId", s: "$reviewStatus" }, n: { $sum: 1 } } }
+  ]);
+  const byRun = new Map<string, { approved?: number; draft?: number }>();
+  for (const c of counts) {
+    const key = String(c._id.g);
+    byRun.set(key, { ...byRun.get(key), [c._id.s]: c.n });
+  }
+
+  res.json(rows.map((r) => ({
+    id: r._id,
+    createdAt: r.createdAt,
+    kind: r.kind,
+    summary: r.summary || (r.kind === "regenerate" ? "Regenerated one draft question" : "AI generation"),
+    requested: r.requested,
+    saved: r.saved,
+    rejected: r.rejected,
+    ...(r.kind === "generate" ? summariseGeneration(r.saved, byRun.get(String(r._id)) || {}) : {}),
+    params: r.params
+  })));
+}
+
+export async function getAiGeneration(req: AuthedRequest, res: Response) {
+  const run = await AiUsage.findOne({ _id: req.params.id, schoolId: req.user!.schoolId, userId: req.user!.userId }).lean();
+  if (!run) return res.status(404).json({ error: "Generation not found." });
+  const questions = await Question.find({ generationId: run._id, schoolId: req.user!.schoolId }).sort({ createdAt: 1 });
+  res.json({ id: run._id, summary: run.summary, createdAt: run.createdAt, params: run.params, questions });
+}
+
+// ---- report a bad AI question -------------------------------------------------
+
+export async function reportQuestion(req: AuthedRequest, res: Response) {
+  const q = await Question.findOne({ _id: req.params.id, schoolId: req.user!.schoolId, source: "ai" });
+  if (!q) return res.status(404).json({ error: "AI question not found." });
+  if (!(await ownedSubjectIds(req.user!.userId)).includes(q.subjectId.toString())) {
+    return res.status(403).json({ error: "You're not assigned to this subject." });
+  }
+
+  const v = validateReport(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+
+  const run = q.generationId ? await AiUsage.findById(q.generationId).select("modelName") : null;
+
+  // One open report per teacher per question: reporting again just updates it.
+  await QuestionReport.findOneAndUpdate(
+    { questionId: q._id, reporterId: req.user!.userId, status: "open" },
+    {
+      $set: {
+        schoolId: q.schoolId, generationId: q.generationId, modelName: run?.modelName,
+        reason: v.reason, note: v.note,
+        snapshot: {
+          questionText: q.questionText, type: q.type, topic: q.topic, difficulty: q.difficulty,
+          options: q.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect })),
+          correctAnswerText: q.correctAnswerText, reviewStatus: q.reviewStatus, aiCheck: q.aiCheck?.status
+        }
+      },
+      $setOnInsert: { createdAt: new Date() }
+    },
+    { upsert: true, new: true }
+  );
+
+  await logActivity(req, {
+    action: "questions.ai_report",
+    summary: `Reported an AI question (${v.reason.replace(/_/g, " ")})`,
+    entityType: "question",
+    entityId: q._id.toString()
+  });
+
+  res.status(201).json({ reported: true });
 }

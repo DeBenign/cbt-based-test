@@ -30,6 +30,9 @@ export function buildReceipt(
   opts: { includeVoidReason: boolean }
 ) {
   const voided = payment.status === "voided";
+  const DAY = 24 * 60 * 60 * 1000;
+  const until = payment.paidUntilAfter ?? null;
+  const from = payment.accessFrom ?? null;
   return {
     receiptNo: payment.receiptNo,
     issuedAt: payment.confirmedAt,
@@ -44,7 +47,10 @@ export function buildReceipt(
     reference: voided ? payment.originalReference || payment.reference : payment.reference,
     terms: payment.terms ?? null,
     termLabel: payment.termLabel ?? null,
-    accessUntil: payment.paidUntilAfter ?? null,
+    accessUntil: until,
+    accessFrom: from,
+    daysGranted: from && until ? Math.round((until.getTime() - from.getTime()) / DAY) : null,
+    daysLeft: !voided && until ? Math.max(0, Math.ceil((until.getTime() - Date.now()) / DAY)) : null, // as of the moment the receipt is opened
     status: payment.status,
     voidedAt: voided ? payment.voidedAt ?? null : null,
     voidReason: voided && opts.includeVoidReason ? payment.voidReason ?? null : null

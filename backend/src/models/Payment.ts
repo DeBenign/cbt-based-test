@@ -12,6 +12,7 @@ export interface IPayment extends Document {
   confirmedAt: Date;
   receiptNo?: string;
   // Recorded so a manual payment can be undone exactly (see voidPayment).
+  accessFrom?: Date;          // where this payment's extension started (the later of now / trial end / paid-until)
   paidUntilBefore?: Date | null;
   paidUntilAfter?: Date;
   status: "applied" | "voided";
@@ -32,6 +33,7 @@ const paymentSchema = new Schema<IPayment>({
   confirmedBy: { type: Schema.Types.ObjectId, ref: "User" },
   confirmedAt: { type: Date, default: Date.now },
   receiptNo: { type: String, unique: true, sparse: true },
+  accessFrom: Date,
   paidUntilBefore: { type: Date, default: undefined },
   paidUntilAfter: Date,
   status: { type: String, enum: ["applied", "voided"], default: "applied" },

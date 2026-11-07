@@ -59,6 +59,22 @@ export default function Billing() {
   const [payError, setPayError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
+
+  async function emailReceipt(id: string) {
+    setEmailMsg(null);
+    try {
+      const r = (await api.post(`/billing/payments/${id}/email-receipt`)).data.receiptEmail;
+      setEmailMsg(
+        r.skipped === "mail-not-configured" ? "Email isn't switched on for this platform yet. Open the receipt and print it instead."
+        : r.skipped === "no-admin-email" ? "Your admin account has no real email address, so there is nowhere to send it."
+        : r.sent > 0 ? "Receipt sent to your email."
+        : "The email couldn't be sent. Please try again."
+      );
+    } catch (err: any) {
+      setEmailMsg(err.response?.data?.error || "Couldn't send the receipt.");
+    }
+  }
   const rolePath = useRolePath();
 
   useEffect(() => {
@@ -188,6 +204,7 @@ export default function Billing() {
       </Card>
 
       <h3>Payment history</h3>
+      {emailMsg && <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>{emailMsg}</p>}
       {status.payments.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No payments recorded yet.</p>
       )}
@@ -197,7 +214,10 @@ export default function Billing() {
             <p style={{ fontWeight: 500, marginBottom: 2, textDecoration: p.status === "voided" ? "line-through" : "none" }}>
               ₦{p.amount.toLocaleString()} {p.status === "voided" && <Badge tone="danger">Cancelled</Badge>}
             </p>
-            <Link to={rolePath(`/receipt/${p.id}`)} style={{ fontSize: 13 }}>Receipt</Link>
+            <span style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 13 }}>
+              <Link to={rolePath(`/receipt/${p.id}`)}>Receipt</Link>
+              {p.status !== "voided" && <button type="button" onClick={() => emailReceipt(p.id)} style={{ padding: "2px 10px", fontSize: 12 }}>Email me this receipt</button>}
+            </span>
           </div>
           <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 0 }}>
             {[p.receiptNo, describePayment(p)].filter(Boolean).join(" · ")}

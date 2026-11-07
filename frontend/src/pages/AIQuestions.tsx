@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -10,6 +10,7 @@ import Badge from "../components/Badge";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import Spinner from "../components/Spinner";
+import ReportQuestion from "../components/ReportQuestion";
 import AiUsageMeter, { AiUsage } from "../components/AiUsageMeter";
 
 function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected: boolean; onToggle: () => void; onChanged: () => void }) {
@@ -146,6 +147,7 @@ function DraftCard({ q, selected, onToggle, onChanged }: { q: Question; selected
                     {regenBusy ? <><Spinner size={12} />Replacing…</> : "Regenerate"}
                   </button>
                 )}
+                <ReportQuestion questionId={q._id} />
                 <button type="button" onClick={discard} style={{ padding: "4px 14px", fontSize: 12 }}>Discard</button>
               </>
             )}
@@ -166,6 +168,8 @@ export default function AIQuestions() {
   const [curricula, setCurricula] = useState<CurriculumItem[]>([]);
   const [drafts, setDrafts] = useState<Question[]>([]);
   const [classId, setClassId] = useState("");
+  const location = useLocation();
+  const pendingTopics = useRef<number[] | null>(null); // topics to tick once a "Use these settings" curriculum is selected
   const [curriculumId, setCurriculumId] = useState("");
   const [topicIdx, setTopicIdx] = useState<number[]>([]);
   const [mcqCount, setMcqCount] = useState(10);
@@ -205,7 +209,18 @@ export default function AIQuestions() {
       setClasses(c.data);
       setSubjects(s.data);
       setCurricula(cur.data);
-      const first = (cur.data as CurriculumItem[])[0];
+      // Coming from AI history with "Use these settings": restore that run's choices.
+      const prefill = (location.state as any)?.prefill as Record<string, any> | undefined;
+      const wanted = prefill ? (cur.data as CurriculumItem[]).find((x) => x._id === prefill.curriculumId) : undefined;
+      if (wanted && prefill) {
+        pendingTopics.current = Array.isArray(prefill.topicIndexes) ? prefill.topicIndexes : null;
+        setMcqCount(prefill.mcqCount ?? 10);
+        setTheoryCount(prefill.theoryCount ?? 0);
+        setTheoryMarks(prefill.theoryMarks ?? 5);
+        if (prefill.difficultyMix) { setMix(prefill.difficultyMix); setDifficulty("custom"); }
+        else setDifficulty(prefill.difficulty ?? "mixed");
+      }
+      const first = wanted ?? (cur.data as CurriculumItem[])[0];
       if (first) { setClassId(first.classId); setCurriculumId(first._id); }
       else if (c.data[0]) setClassId(c.data[0]._id);
       await Promise.all([loadDrafts(), loadUsage()]);
@@ -218,7 +233,7 @@ export default function AIQuestions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, curricula]);
 
-  useEffect(() => { setTopicIdx([]); }, [curriculumId]);
+  useEffect(() => { setTopicIdx(pendingTopics.current ?? []); pendingTopics.current = null; }, [curriculumId]);
 
   async function generate(): Promise<boolean> {
     setError(null);
@@ -282,7 +297,10 @@ export default function AIQuestions() {
 
   return (
     <PageShell maxWidth={780}>
-      <h1>Generate questions with AI</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <h1>Generate questions with AI</h1>
+        <Link to={rolePath("/ai-history")} style={{ fontSize: 13 }}>History</Link>
+      </div>
       <p style={{ color: "var(--text-secondary)", marginBottom: 20 }}>
         Questions are written from the curriculum you choose and saved as <b>drafts</b>. Check each one — the AI can make mistakes —
         then approve it into your question bank. Drafts can't be used in an exam until approved.

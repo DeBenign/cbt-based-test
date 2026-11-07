@@ -100,10 +100,12 @@ export default function Curriculum() {
     <PageShell maxWidth={780}>
       <h1>Curriculum</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 20 }}>
-        Add the scheme of work or syllabus for each class and subject. Teachers then generate exam questions from it
-        {isTeacher ? " — you can add curriculum for the subjects you teach." : "."}
+        {isTeacher
+          ? "Add the scheme of work or syllabus for each class and subject you teach, then generate exam questions from it."
+          : "Read-only view of every curriculum your teachers have added. Only teachers can add or remove them."}
       </p>
 
+      {isTeacher && (
       <Card style={{ marginBottom: 24 }}>
         <h3>Add a curriculum</h3>
         <form onSubmit={handleUpload}>
@@ -150,6 +152,7 @@ export default function Curriculum() {
           </PrimaryButton>
         </form>
       </Card>
+      )}
 
       <h3>Saved curricula ({items.length})</h3>
       {items.length === 0 && <p style={{ color: "var(--text-secondary)" }}>Nothing uploaded yet.</p>}
@@ -168,7 +171,7 @@ export default function Curriculum() {
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               {isTeacher && <Link to={rolePath("/ai-questions")}><button type="button" style={{ padding: "4px 12px", fontSize: 12 }}>Generate questions</button></Link>}
-              <button type="button" onClick={() => handleDelete(c._id)} style={{ padding: "4px 12px", fontSize: 12 }}>Delete</button>
+              {isTeacher && <button type="button" onClick={() => handleDelete(c._id)} style={{ padding: "4px 12px", fontSize: 12 }}>Delete</button>}
             </div>
           </div>
         </Card>

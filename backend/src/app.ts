@@ -12,6 +12,7 @@ import classRoutes from "./routes/classRoutes";
 import adminQuestionRoutes from "./routes/adminQuestionRoutes";
 import adminExamRoutes from "./routes/adminExamRoutes";
 import schoolRoutes from "./routes/schoolRoutes";
+import aiReportRoutes from "./routes/aiReportRoutes";
 import gradingRoutes from "./routes/gradingRoutes";
 import billingRoutes from "./routes/billingRoutes";
 import { requireAuth } from "./middleware/auth";
@@ -58,6 +59,7 @@ v1.get("/cron/maintenance", asyncHandler(runMaintenance)); // secured by CRON_SE
 v1.use("/auth", authRoutes);
 
 v1.use("/superadmin/schools", requireAuth, requireRole("superadmin"), schoolRoutes);
+v1.use("/superadmin/ai-reports", requireAuth, requireRole("superadmin"), aiReportRoutes);
 
 v1.use("/admin/branding", requireAuth, requireRole("admin"), brandingRoutes);
 v1.use("/admin/billing", requireAuth, requireRole("admin"), billingRoutes); // never gated -- this is the way out
@@ -67,6 +69,7 @@ v1.use("/admin/users", requireAuth, requireRole("admin"), requireActiveSubscript
 v1.use("/admin/questions", requireAuth, requireRole("admin"), requireActiveSubscription, adminQuestionRoutes);
 v1.use("/admin/exams", requireAuth, requireRole("admin"), requireActiveSubscription, adminExamRoutes);
 v1.use("/admin/curriculum", requireAuth, requireRole("admin"), requireActiveSubscription, curriculumRoutes);
+v1.use("/admin/results", requireAuth, requireRole("admin"), requireActiveSubscription, resultRoutes);
 v1.use("/admin/activity", requireAuth, requireRole("admin"), requireActiveSubscription, activityRoutes);
 v1.use("/admin/review", requireAuth, requireRole("admin"), requireActiveSubscription, reviewRoutes);
 

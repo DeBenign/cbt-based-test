@@ -25,6 +25,8 @@ import Receipt from "./pages/Receipt";
 import Branding from "./pages/Branding";
 import Curriculum from "./pages/Curriculum";
 import AIQuestions from "./pages/AIQuestions";
+import AIHistory from "./pages/AIHistory";
+import AIReports from "./pages/AIReports";
 import Activity from "./pages/Activity";
 import PersonActivity from "./pages/PersonActivity";
 import AttemptDetail from "./pages/AttemptDetail";
@@ -47,6 +49,7 @@ export default function App() {
               <Route element={<AppLayout />}>
                 <Route element={<RequireExactRole allow={["superadmin"]} />}>
                   <Route path="schools" element={<SchoolManagement />} />
+                  <Route path="ai-reports" element={<AIReports />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["admin", "superadmin"]} />}>
                   <Route path="receipt/:paymentId" element={<Receipt />} />
@@ -69,6 +72,7 @@ export default function App() {
                 <Route element={<RequireExactRole allow={["teacher"]} />}>
                   <Route path="grading/:examId" element={<GradingQueue />} />
                   <Route path="ai-questions" element={<AIQuestions />} />
+                  <Route path="ai-history" element={<AIHistory />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["student"]} />}>
                   <Route path="exams/:id/take" element={<TestTaking />} />

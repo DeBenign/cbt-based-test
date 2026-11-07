@@ -56,7 +56,10 @@ export default function Navbar({ logoUrl, schoolName }: NavbarProps) {
           <Link to={rolePath("/exams")} style={{ color: "var(--text-secondary)" }}>Exams</Link>
         )}
         {user?.role === "superadmin" && (
-          <Link to={rolePath("/schools")} style={{ color: "var(--text-secondary)" }}>Schools</Link>
+          <>
+            <Link to={rolePath("/schools")} style={{ color: "var(--text-secondary)" }}>Schools</Link>
+            <Link to={rolePath("/ai-reports")} style={{ color: "var(--text-secondary)" }}>AI reports</Link>
+          </>
         )}
         {user?.role === "admin" && (
           <>

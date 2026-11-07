@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/requireRole";
 import { asyncHandler } from "../middleware/asyncHandler";
-import { createSchool, listSchools, setSchoolActive, recordPayment, setSchoolPricing, setSchoolAiLimit, listSchoolPayments, voidSchoolPayment, getSchoolReceipt } from "../controllers/schoolController";
+import { createSchool, listSchools, setSchoolActive, recordPayment, setSchoolPricing, setSchoolAiLimit, listSchoolPayments, voidSchoolPayment, getSchoolReceipt, emailSchoolReceipt } from "../controllers/schoolController";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,5 +17,6 @@ router.post("/:id/record-payment", requireRole("superadmin"), asyncHandler(recor
 router.get("/:id/payments", requireRole("superadmin"), asyncHandler(listSchoolPayments));
 router.post("/:id/payments/:paymentId/void", requireRole("superadmin"), asyncHandler(voidSchoolPayment));
 router.get("/:id/payments/:paymentId/receipt", requireRole("superadmin"), asyncHandler(getSchoolReceipt));
+router.post("/:id/payments/:paymentId/send-receipt", requireRole("superadmin"), asyncHandler(emailSchoolReceipt));
 
 export default router;

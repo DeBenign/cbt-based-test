@@ -64,7 +64,7 @@ test("receipt email has the receipt number, amount, terms and access date", () =
   assert.equal(m.subject, "Test Academy: payment received (receipt BMK-2026-00007)");
   assert.match(m.text, /₦45,000/);
   assert.match(m.text, /2 terms \(2026\/27 Term 1\)/);
-  assert.match(m.text, /paid until 31 March 2027/);
+  assert.match(m.text, /runs until 31 March 2027/);
   assert.match(m.html, /Ada &lt;b&gt;/); // names are escaped
   assert.doesNotMatch(m.html, /Ada <b>/);
 });

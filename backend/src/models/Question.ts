@@ -21,6 +21,7 @@ export interface IQuestion extends Document {
   reviewStatus: "draft" | "approved"; // AI-generated questions start as "draft" until a teacher approves them
   source: "manual" | "ai";
   curriculumId?: Types.ObjectId;
+  generationId?: Types.ObjectId; // the AiUsage row (the generation run) this AI question came from
   aiCheck?: { status: "agreed" | "disagreed" | "unclear"; note?: string; checkedAt?: Date }; // second-opinion result on an AI MCQ; cleared when a teacher edits the question
   createdBy: Types.ObjectId;
   createdAt: Date;
@@ -50,6 +51,7 @@ const questionSchema = new Schema<IQuestion>({
   reviewStatus: { type: String, enum: ["draft", "approved"], default: "approved" },
   source: { type: String, enum: ["manual", "ai"], default: "manual" },
   curriculumId: { type: Schema.Types.ObjectId, ref: "Curriculum" },
+  generationId: { type: Schema.Types.ObjectId, ref: "AiUsage", index: true },
   aiCheck: {
     type: new Schema({
       status: { type: String, enum: ["agreed", "disagreed", "unclear"], required: true },

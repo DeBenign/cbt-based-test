@@ -8,6 +8,7 @@ import { buildReceipt, ensureReceiptNo } from "../utils/receipt";
 import { applyPayment, voidPayment } from "../services/paymentService";
 import { ensureTrialDates, getAccessStatus, accessExpiry } from "../utils/schoolAccess";
 import { clearAccountCache } from "../utils/accountCheck";
+import { emailReceiptForPayment } from "../services/paymentEmail";
 import { getMonthTotalsBySchool, effectiveLimit } from "../services/aiUsage";
 import { AI_MODEL } from "../services/questionGenerator";
 import { TERM_DAYS, MAX_TERMS_PER_PAYMENT, effectivePrice, termFee, onlinePaymentsEnabled } from "../utils/billingConfig";
@@ -74,7 +75,9 @@ export async function listSchools(_req: AuthedRequest, res: Response) {
         aiUsedThisMonth: aiTotals.get(String(s._id))?.used ?? 0,
         aiRequestsThisMonth: aiTotals.get(String(s._id))?.requests ?? 0,
         aiCostUsdThisMonth: Math.round((aiTotals.get(String(s._id))?.costUsd ?? 0) * 10000) / 10000,
-        aiModel: AI_MODEL
+        aiModel: AI_MODEL,
+        termDays: TERM_DAYS,
+        maxTerms: MAX_TERMS_PER_PAYMENT
       };
     })
   );
@@ -110,7 +113,7 @@ export async function setSchoolActive(req: AuthedRequest, res: Response) {
 // calls the same applyPayment, just automatically instead of by hand.
 // One payment covers one or more school TERMS (not months).
 export async function recordPayment(req: AuthedRequest, res: Response) {
-  const { amount, reference, terms, termLabel, paidUntil } = req.body;
+  const { amount, reference, terms, termLabel } = req.body;
   const amountNum = Number(amount);
   const termsNum = Number(terms);
 
@@ -120,11 +123,6 @@ export async function recordPayment(req: AuthedRequest, res: Response) {
   if (!Number.isInteger(termsNum) || termsNum < 1 || termsNum > MAX_TERMS_PER_PAYMENT) {
     return res.status(400).json({ error: `terms must be a whole number from 1 to ${MAX_TERMS_PER_PAYMENT}` });
   }
-  let paidUntilDate: Date | undefined;
-  if (paidUntil) {
-    paidUntilDate = new Date(paidUntil);
-    if (isNaN(paidUntilDate.getTime())) return res.status(400).json({ error: "paidUntil is not a valid date" });
-  }
 
   try {
     const result = await applyPayment({
@@ -133,7 +131,6 @@ export async function recordPayment(req: AuthedRequest, res: Response) {
       reference: String(reference).trim(),
       terms: termsNum,
       termLabel: termLabel ? String(termLabel).trim() : undefined,
-      paidUntil: paidUntilDate,
       method: "manual",
       confirmedBy: req.user!.userId
     });
@@ -143,6 +140,7 @@ export async function recordPayment(req: AuthedRequest, res: Response) {
     res.json({
       message: "Payment recorded",
       subscriptionPaidUntil: result.subscriptionPaidUntil,
+      daysLeft: Math.ceil((result.subscriptionPaidUntil.getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
       paymentId: result.paymentId,
       receiptNo: result.receiptNo,
       receiptEmail: result.receiptEmail
@@ -260,6 +258,20 @@ async function sendReceipt(schoolId: string, paymentId: string, includeVoidReaso
   if (!school || !payment) return res.status(404).json({ error: "Receipt not found" });
   await ensureReceiptNo(payment);
   res.json(buildReceipt(payment, school, { includeVoidReason }));
+}
+
+// Superadmin: (re)send a payment's receipt to the school's admins.
+export async function emailSchoolReceipt(req: AuthedRequest, res: Response) {
+  const result = await emailReceiptForPayment(req.params.id, req.params.paymentId);
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  res.json({ receiptEmail: result });
+}
+
+// School admin: email this receipt to myself.
+export async function emailMyReceipt(req: AuthedRequest, res: Response) {
+  const result = await emailReceiptForPayment(req.user!.schoolId, req.params.paymentId, req.user!.userId);
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  res.json({ receiptEmail: result });
 }
 
 export async function getSchoolReceipt(req: AuthedRequest, res: Response) {

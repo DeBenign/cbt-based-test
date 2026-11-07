@@ -8,13 +8,22 @@ import { sendPaymentReceipt } from "./paymentEmail";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// A payment always ADDS days: it starts from whichever is latest of today, the end of the free trial
+// and the end of time already paid, then adds terms x TERM_DAYS. Paying early (even during the trial)
+// never loses time, and nobody types a date by hand.
+export function computeAccessEnd(o: {
+  now: number; trialEndsAt?: Date | null; paidUntil?: Date | null; terms: number; termDays: number;
+}): { from: Date; until: Date } {
+  const from = Math.max(o.now, o.trialEndsAt?.getTime() ?? 0, o.paidUntil?.getTime() ?? 0);
+  return { from: new Date(from), until: new Date(from + o.terms * o.termDays * DAY_MS) };
+}
+
 export async function applyPayment(params: {
   schoolId: string;
   amount: number;
   reference: string;
   terms: number;
   termLabel?: string;
-  paidUntil?: Date; // optional exact end date, to line access up with the school's real term end
   method: "nomba" | "manual";
   confirmedBy?: string;
 }): Promise<{ subscriptionPaidUntil: Date; paymentId: string; receiptNo: string; receiptEmail?: { sent: number; failed: number; skipped?: string } } | { alreadyProcessed: true }> {
@@ -26,14 +35,9 @@ export async function applyPayment(params: {
 
   const before = school.subscriptionPaidUntil ?? null;
 
-  // Paying early never loses time: a new term stacks on top of any paid time left.
-  const base = before && before.getTime() > Date.now() ? before : new Date();
-
-  let paidUntil = new Date(base.getTime() + params.terms * TERM_DAYS * DAY_MS);
-  if (params.paidUntil) {
-    if (params.paidUntil.getTime() <= Date.now()) throw new Error("The access-until date must be in the future");
-    paidUntil = params.paidUntil;
-  }
+  const { from: accessFrom, until: paidUntil } = computeAccessEnd({
+    now: Date.now(), trialEndsAt: school.trialEndsAt, paidUntil: before, terms: params.terms, termDays: TERM_DAYS
+  });
 
   const receiptNo = await nextReceiptNo();
   const payment = await Payment.create({
@@ -45,6 +49,7 @@ export async function applyPayment(params: {
     termLabel: params.termLabel,
     confirmedBy: params.confirmedBy,
     receiptNo,
+    accessFrom,
     paidUntilBefore: before,
     paidUntilAfter: paidUntil
   });
@@ -63,7 +68,8 @@ export async function applyPayment(params: {
     terms: params.terms,
     termLabel: params.termLabel,
     method: params.method,
-    paidUntil
+    paidUntil,
+    accessFrom
   });
 
   return { subscriptionPaidUntil: paidUntil, paymentId: payment._id.toString(), receiptNo, receiptEmail };

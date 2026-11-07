@@ -1,70 +1,11 @@
 import { useEffect, useState, FormEvent } from "react";
-import { Link } from "react-router-dom";
 import api from "../services/api";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import DaysLeftBadge from "../components/DaysLeftBadge";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
-
-interface SchoolRow {
-  id: string;
-  name: string;
-  address?: string;
-  isActive: boolean;
-  createdAt: string;
-  trialEndsAt: string;
-  subscriptionStatus: string;
-  subscriptionPaidUntil?: string;
-  accessEndsAt: string;
-  accessDaysLeft: number;
-  studentCount: number;
-  pricePerStudent: number;
-  hasCustomPrice: boolean;
-  termFee: number;
-  adminCount: number;
-  admins: { name: string; email: string }[];
-  aiLimit: number;
-  hasCustomAiLimit: boolean;
-  aiUsedThisMonth: number;
-  aiRequestsThisMonth: number;
-  aiCostUsdThisMonth: number;
-  aiModel: string;
-}
-
-interface PaymentItem {
-  id: string;
-  status: "applied" | "voided";
-  receiptNo: string | null;
-  amount: number;
-  reference: string;
-  method: "nomba" | "manual";
-  terms: number | null;
-  termLabel: string | null;
-  confirmedAt: string;
-  voidedAt: string | null;
-  voidReason: string | null;
-  canVoid: boolean;
-}
-
-function receiptEmailNote(r?: { sent: number; failed: number; skipped?: string }): string {
-  if (!r) return "";
-  if (r.skipped === "mail-not-configured") return "Receipt email not sent: mail isn't set up on the server.";
-  if (r.skipped === "no-admin-email") return "Receipt email not sent: this school's admin has no email address.";
-  if (r.sent > 0 && r.failed === 0) return `Receipt emailed to ${r.sent} admin${r.sent === 1 ? "" : "s"}.`;
-  if (r.sent > 0) return `Receipt emailed to ${r.sent}, but ${r.failed} failed.`;
-  return "Receipt email could not be sent.";
-}
-
-interface PaymentDraft {
-  amount: string;
-  reference: string;
-  terms: string;
-  termLabel: string;
-  paidUntil: string;
-}
-
-const EMPTY_DRAFT: PaymentDraft = { amount: "", reference: "", terms: "1", termLabel: "", paidUntil: "" };
+import SchoolPanel, { SchoolRow } from "../components/SchoolPanel";
 
 function billingBadge(s: SchoolRow): { tone: "success" | "warning" | "danger"; label: string } {
   const now = Date.now();
@@ -85,13 +26,6 @@ export default function SchoolManagement() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [paymentDrafts, setPaymentDrafts] = useState<Record<string, PaymentDraft>>({});
-  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
-  const [aiLimitDrafts, setAiLimitDrafts] = useState<Record<string, string>>({});
-  const [paymentMessages, setPaymentMessages] = useState<Record<string, string>>({});
-  const [payments, setPayments] = useState<Record<string, PaymentItem[]>>({});
-  const [voidingId, setVoidingId] = useState<string | null>(null);
-  const [voidReason, setVoidReason] = useState("");
   const [onlyEnding, setOnlyEnding] = useState(false);
 
   async function loadSchools() {
@@ -102,23 +36,6 @@ export default function SchoolManagement() {
   useEffect(() => {
     loadSchools();
   }, []);
-
-  async function loadPayments(id: string) {
-    const res = await api.get(`/schools/${id}/payments`);
-    setPayments((prev) => ({ ...prev, [id]: res.data }));
-  }
-
-  async function handleVoid(schoolId: string, paymentId: string) {
-    try {
-      const res = await api.post(`/schools/${schoolId}/payments/${paymentId}/void`, { reason: voidReason });
-      setPaymentMessages((prev) => ({ ...prev, [schoolId]: res.data.message }));
-      setVoidingId(null);
-      setVoidReason("");
-      await Promise.all([loadPayments(schoolId), loadSchools()]);
-    } catch (err: any) {
-      setPaymentMessages((prev) => ({ ...prev, [schoolId]: err.response?.data?.error || "Couldn't cancel the payment." }));
-    }
-  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -143,62 +60,6 @@ export default function SchoolManagement() {
   async function handleToggleActive(id: string, isActive: boolean) {
     await api.put(`/schools/${id}/active`, { isActive: !isActive });
     await loadSchools();
-  }
-
-  function draft(id: string): PaymentDraft {
-    return paymentDrafts[id] || EMPTY_DRAFT;
-  }
-
-  function setField(id: string, field: keyof PaymentDraft, value: string) {
-    setPaymentDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || EMPTY_DRAFT), [field]: value } }));
-  }
-
-  async function handleRecordPayment(id: string) {
-    const d = draft(id);
-    const amount = Number(d.amount);
-    const terms = Number(d.terms);
-    if (!amount || amount <= 0 || !d.reference.trim() || !Number.isInteger(terms) || terms < 1) {
-      setPaymentMessages((prev) => ({ ...prev, [id]: "Enter the amount received, a unique reference (e.g. a receipt number) and the number of terms." }));
-      return;
-    }
-    try {
-      const res = await api.post(`/schools/${id}/record-payment`, {
-        amount,
-        reference: d.reference.trim(),
-        terms,
-        termLabel: d.termLabel.trim() || undefined,
-        paidUntil: d.paidUntil ? new Date(`${d.paidUntil}T23:59:59`).toISOString() : undefined
-      });
-      setPaymentMessages((prev) => ({ ...prev, [id]: `${res.data.message} (receipt ${res.data.receiptNo}) — access until ${new Date(res.data.subscriptionPaidUntil).toLocaleDateString()}. ${receiptEmailNote(res.data.receiptEmail)}` }));
-      setPaymentDrafts((prev) => ({ ...prev, [id]: EMPTY_DRAFT }));
-      await Promise.all([loadSchools(), loadPayments(id)]);
-    } catch (err: any) {
-      setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't record the payment." }));
-    }
-  }
-
-  async function handleSavePrice(id: string) {
-    const raw = (priceDrafts[id] ?? "").trim();
-    try {
-      await api.put(`/schools/${id}/pricing`, { pricePerStudent: raw === "" ? null : Number(raw) });
-      setPaymentMessages((prev) => ({ ...prev, [id]: raw === "" ? "Price reset to the default." : `Price set to ₦${Number(raw).toLocaleString()} per student per term.` }));
-      setPriceDrafts((prev) => ({ ...prev, [id]: "" }));
-      await loadSchools();
-    } catch (err: any) {
-      setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't save the price." }));
-    }
-  }
-
-  async function handleSaveAiLimit(id: string) {
-    const raw = (aiLimitDrafts[id] ?? "").trim();
-    try {
-      await api.put(`/schools/${id}/ai-limit`, { limit: raw === "" ? null : Number(raw) });
-      setPaymentMessages((prev) => ({ ...prev, [id]: raw === "" ? "AI allowance reset to the platform default." : `AI allowance set to ${Number(raw).toLocaleString()} questions per month.` }));
-      setAiLimitDrafts((prev) => ({ ...prev, [id]: "" }));
-      await loadSchools();
-    } catch (err: any) {
-      setPaymentMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't save the AI allowance." }));
-    }
   }
 
   return (
@@ -248,150 +109,28 @@ export default function SchoolManagement() {
       {schools.filter((s) => !onlyEnding || s.accessDaysLeft <= 30).map((s) => {
         const isExpanded = expandedId === s.id;
         const badge = billingBadge(s);
-        const d = draft(s.id);
         return (
           <Card key={s.id} style={{ marginBottom: 10 }}>
             <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-              onClick={() => {
-                setExpandedId(isExpanded ? null : s.id);
-                if (!isExpanded && !payments[s.id]) loadPayments(s.id);
-              }}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", gap: 10, flexWrap: "wrap" }}
+              onClick={() => setExpandedId(isExpanded ? null : s.id)}
             >
               <div>
                 <p style={{ fontWeight: 500 }}>{s.name}</p>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                  {s.address || "No address"} · {s.adminCount} admin{s.adminCount !== 1 ? "s" : ""} · access ends {new Date(s.accessEndsAt).toLocaleDateString()}
+                  {s.address || "No address"} · {s.studentCount} student{s.studentCount === 1 ? "" : "s"} · ends {new Date(s.accessEndsAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <DaysLeftBadge days={s.accessDaysLeft} />
                 <Badge tone={badge.tone}>{badge.label}</Badge>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleToggleActive(s.id, s.isActive);
-                  }}
-                >
+                {!s.isActive && <Badge tone="danger">Deactivated</Badge>}
+                <button onClick={(e) => { e.stopPropagation(); handleToggleActive(s.id, s.isActive); }} style={{ padding: "3px 10px", fontSize: 12 }}>
                   {s.isActive ? "Deactivate" : "Activate"}
                 </button>
               </div>
             </div>
-
-            {isExpanded && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--border)", fontSize: 12, color: "var(--text-secondary)" }}>
-                <p>Created: {new Date(s.createdAt).toLocaleString()}</p>
-                <p>Trial ends: {new Date(s.trialEndsAt).toLocaleDateString()}</p>
-                {s.subscriptionPaidUntil && <p>Paid until: {new Date(s.subscriptionPaidUntil).toLocaleDateString()}</p>}
-                <p style={{ marginTop: 6 }}>Admins:</p>
-                {s.admins.length === 0 && <p>None</p>}
-                {s.admins.map((a) => (
-                  <p key={a.email}>{a.name} — {a.email}</p>
-                ))}
-
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
-                  <p style={{ fontWeight: 500, marginBottom: 4, color: "var(--text-primary)" }}>Fee per term</p>
-                  <p style={{ marginBottom: 6 }}>
-                    {s.studentCount} student{s.studentCount === 1 ? "" : "s"} × ₦{s.pricePerStudent.toLocaleString()}
-                    {s.hasCustomPrice ? " (custom price)" : " (default price)"} = <strong>₦{s.termFee.toLocaleString()}</strong> per term
-                    {" "}(a minimum fee may apply)
-                  </p>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                    <input
-                      placeholder="Custom price per student (₦) — empty = default"
-                      type="number"
-                      value={priceDrafts[s.id] ?? ""}
-                      onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                      style={{ flex: 1 }}
-                    />
-                    <button type="button" onClick={() => handleSavePrice(s.id)} style={{ padding: "3px 10px" }}>Save price</button>
-                  </div>
-
-                  <p style={{ fontWeight: 500, marginBottom: 4, color: "var(--text-primary)" }}>AI questions this month</p>
-                  <p style={{ marginBottom: 6 }}>
-                    <strong>{s.aiUsedThisMonth}</strong> of {s.aiLimit.toLocaleString()} used{s.hasCustomAiLimit ? " (custom allowance)" : " (default allowance)"}
-                    {" "}· {s.aiRequestsThisMonth} request{s.aiRequestsThisMonth === 1 ? "" : "s"} · est. cost ${s.aiCostUsdThisMonth.toFixed(4)} ({s.aiModel})
-                  </p>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                    <input
-                      placeholder="Questions per month — empty = default, 0 = AI off"
-                      type="number"
-                      min={0}
-                      value={aiLimitDrafts[s.id] ?? ""}
-                      onChange={(e) => setAiLimitDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                      style={{ flex: 1 }}
-                    />
-                    <button type="button" onClick={() => handleSaveAiLimit(s.id)} style={{ padding: "3px 10px" }}>Save allowance</button>
-                  </div>
-
-                  <p style={{ fontWeight: 500, marginBottom: 6, color: "var(--text-primary)" }}>Record a payment (cash or transfer)</p>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                    <input
-                      placeholder={`Amount received (₦) — one term is ₦${s.termFee.toLocaleString()}`}
-                      type="number"
-                      value={d.amount}
-                      onChange={(e) => setField(s.id, "amount", e.target.value)}
-                      style={{ flex: 2, minWidth: 160 }}
-                    />
-                    <input
-                      placeholder="Reference (receipt no., must be unique)"
-                      value={d.reference}
-                      onChange={(e) => setField(s.id, "reference", e.target.value)}
-                      style={{ flex: 2, minWidth: 160 }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <select value={d.terms} onChange={(e) => setField(s.id, "terms", e.target.value)}>
-                      <option value="1">1 term</option>
-                      <option value="2">2 terms</option>
-                      <option value="3">3 terms (full year)</option>
-                    </select>
-                    <input
-                      placeholder="Label, e.g. 2026/27 Term 1 (optional)"
-                      value={d.termLabel}
-                      onChange={(e) => setField(s.id, "termLabel", e.target.value)}
-                      style={{ flex: 1, minWidth: 160 }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ marginBottom: 0, fontSize: 12 }}>Access until (optional — leave empty for the standard term length)</label>
-                    <input type="date" value={d.paidUntil} onChange={(e) => setField(s.id, "paidUntil", e.target.value)} />
-                    <button type="button" onClick={() => handleRecordPayment(s.id)} style={{ padding: "3px 10px" }}>
-                      Record payment
-                    </button>
-                  </div>
-                  {paymentMessages[s.id] && <p style={{ marginBottom: 6 }}>{paymentMessages[s.id]}</p>}
-
-                  <p style={{ fontWeight: 500, margin: "12px 0 6px", color: "var(--text-primary)" }}>Payments</p>
-                  {(payments[s.id] || []).length === 0 && <p>No payments recorded yet.</p>}
-                  {(payments[s.id] || []).map((p) => (
-                    <div key={p.id} style={{ marginBottom: 8, opacity: p.status === "voided" ? 0.6 : 1 }}>
-                      <p style={{ marginBottom: 2, textDecoration: p.status === "voided" ? "line-through" : "none" }}>
-                        ₦{p.amount.toLocaleString()} · {p.receiptNo ? `${p.receiptNo} · ` : ""}ref {p.reference} · {new Date(p.confirmedAt).toLocaleDateString()}
-                        {p.status === "voided" && <> <Badge tone="danger">Cancelled</Badge></>}
-                      </p>
-                      <p style={{ marginBottom: 0 }}>
-                        <Link to={`/superadmin/receipt/${p.id}?school=${s.id}`}>Receipt</Link>
-                        {p.canVoid && voidingId !== p.id && (
-                          <> · <button type="button" onClick={() => { setVoidingId(p.id); setVoidReason(""); }} style={{ padding: "1px 8px", fontSize: 12 }}>Cancel this payment</button></>
-                        )}
-                        {p.voidReason && <> · reason: {p.voidReason}</>}
-                      </p>
-                      {voidingId === p.id && (
-                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                          <input placeholder="Why is it being cancelled? (required)" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} style={{ flex: 1 }} />
-                          <button type="button" onClick={() => handleVoid(s.id, p.id)} style={{ padding: "3px 10px" }}>Confirm cancel</button>
-                          <button type="button" onClick={() => setVoidingId(null)} style={{ padding: "3px 10px" }}>Keep it</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 0 }}>
-                    Only the newest cash payment can be cancelled; the school's access date goes back to what it was. To correct a mistake, cancel it and record the right payment (the same receipt number can be used again).
-                  </p>
-                </div>
-              </div>
-            )}
+            {isExpanded && <SchoolPanel school={s} onChanged={loadSchools} />}
           </Card>
         );
       })}

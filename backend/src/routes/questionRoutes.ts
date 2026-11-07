@@ -8,7 +8,7 @@ import {
   updateQuestion,
   deleteQuestion
 } from "../controllers/questionController";
-import { generateDraftQuestions, approveDrafts, regenerateDraft, discardDrafts, getAiUsage } from "../controllers/aiQuestionController";
+import { generateDraftQuestions, approveDrafts, regenerateDraft, discardDrafts, getAiUsage, listAiHistory, getAiGeneration, reportQuestion } from "../controllers/aiQuestionController";
 
 const router = Router();
 
@@ -18,8 +18,11 @@ router.get("/", asyncHandler(listQuestions));
 router.post("/", requireRole("teacher"), asyncHandler(createQuestion));
 router.post("/generate", requireRole("teacher"), asyncHandler(generateDraftQuestions));
 router.get("/ai-usage", requireRole("teacher"), asyncHandler(getAiUsage));
+router.get("/ai-history", requireRole("teacher"), asyncHandler(listAiHistory));
+router.get("/ai-history/:id", requireRole("teacher"), asyncHandler(getAiGeneration));
 router.post("/drafts/approve", requireRole("teacher"), asyncHandler(approveDrafts));
 router.post("/drafts/discard", requireRole("teacher"), asyncHandler(discardDrafts));
+router.post("/:id/report", requireRole("teacher"), asyncHandler(reportQuestion));
 router.post("/:id/regenerate", requireRole("teacher"), asyncHandler(regenerateDraft));
 router.put("/:id", requireRole("teacher"), asyncHandler(updateQuestion));
 router.delete("/:id", requireRole("teacher"), asyncHandler(deleteQuestion));

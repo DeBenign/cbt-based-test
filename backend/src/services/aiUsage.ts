@@ -94,11 +94,14 @@ export async function schoolAllowance(schoolId: string) {
 export async function recordUsage(row: {
   schoolId: string; userId: string; curriculumId?: string; kind: "generate" | "regenerate";
   modelName: string; inputTokens: number; outputTokens: number; requested: number; saved: number; rejected: number;
-}): Promise<void> {
+  summary?: string; params?: Record<string, unknown>;
+}): Promise<string | null> {
   try {
-    await AiUsage.create({ ...row, costUsd: estimateCostUsd(row.modelName, row.inputTokens, row.outputTokens) });
+    const doc = await AiUsage.create({ ...row, costUsd: estimateCostUsd(row.modelName, row.inputTokens, row.outputTokens) });
+    return doc._id.toString();
   } catch (err) {
     console.error("AI usage write failed", err);
+    return null;
   }
 }
 

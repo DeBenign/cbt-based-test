@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Question, Subject, ClassRoom } from "../types";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
+import ReportQuestion from "../components/ReportQuestion";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import { useRolePath } from "../hooks/useRolePath";
@@ -278,7 +279,12 @@ export default function QuestionBank() {
                 <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{q.marks} mark{q.marks > 1 ? "s" : ""}</span>
               </div>
             </div>
-            {canManage && <button onClick={() => handleDelete(q._id)}>Delete</button>}
+            {canManage && (
+              <div style={{ display: "flex", gap: 8, flexDirection: "column", alignItems: "flex-end" }}>
+                <button onClick={() => handleDelete(q._id)}>Delete</button>
+                {q.source === "ai" && <ReportQuestion questionId={q._id} />}
+              </div>
+            )}
           </div>
         </Card>
       ))}

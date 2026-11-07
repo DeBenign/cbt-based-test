@@ -14,6 +14,8 @@ export interface IAiUsage extends Document {
   requested: number;   // questions asked for
   saved: number;       // questions that passed validation and were kept (what counts against the allowance)
   rejected: number;
+  summary?: string;                    // e.g. "Primary 5 · Mathematics · Term 1 scheme", shown in the history list
+  params?: Record<string, unknown>;    // the settings used, so a teacher can run the same thing again
   createdAt: Date;
 }
 
@@ -29,6 +31,8 @@ const aiUsageSchema = new Schema<IAiUsage>({
   requested: { type: Number, default: 0 },
   saved: { type: Number, default: 0 },
   rejected: { type: Number, default: 0 },
+  summary: String,
+  params: Schema.Types.Mixed,
   createdAt: { type: Date, default: Date.now }
 });
 
