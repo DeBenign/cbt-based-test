@@ -52,7 +52,7 @@ function emailNote(r: EmailResult, who: string): string {
   if (r.skipped === "no-admin-email") return "Receipt email NOT sent: this school's admin has no real email address.";
   if (r.sent > 0 && r.failed === 0) return `Receipt emailed to ${who}.`;
   if (r.sent > 0) return `Receipt emailed to ${r.sent}, but ${r.failed} failed${r.error ? `: ${r.error}` : ""}.`;
-  return `Receipt email could not be sent${r.error ? `: ${r.error}` : ""}. Use "Send test email" at the top of the Schools page to check the mail settings, then press "Email receipt" on the payment.`;
+  return `Receipt email could not be sent${r.error ? `: ${r.error}` : ""}. Check the mail settings, then press "Email receipt" on the payment to try again.`;
 }
 
 const DAY = 24 * 60 * 60 * 1000;

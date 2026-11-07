@@ -9,8 +9,6 @@ import { applyPayment, voidPayment } from "../services/paymentService";
 import { ensureTrialDates, getAccessStatus, accessExpiry } from "../utils/schoolAccess";
 import { clearAccountCache } from "../utils/accountCheck";
 import { emailReceiptForPayment } from "../services/paymentEmail";
-import { mailProvider, missingMailSettings, sendMail, verifyMail } from "../services/mailer";
-import { isSyntheticEmail } from "../utils/passwordReset";
 import { getMonthTotalsBySchool, effectiveLimit } from "../services/aiUsage";
 import { AI_MODEL } from "../services/questionGenerator";
 import { TERM_DAYS, MAX_TERMS_PER_PAYMENT, effectivePrice, termFee, onlinePaymentsEnabled } from "../utils/billingConfig";
@@ -260,29 +258,6 @@ async function sendReceipt(schoolId: string, paymentId: string, includeVoidReaso
   if (!school || !payment) return res.status(404).json({ error: "Receipt not found" });
   await ensureReceiptNo(payment);
   res.json(buildReceipt(payment, school, { includeVoidReason }));
-}
-
-// Superadmin: "does email work on the live server?" Checks the settings, the SMTP login, then sends a
-// test message to the owner's own address, and says in plain words what is wrong if it fails.
-export async function sendTestEmail(req: AuthedRequest, res: Response) {
-  if (!mailProvider()) {
-    return res.json({ ok: false, message: `Email isn't set up on the server. Missing or empty: ${missingMailSettings().join(", ")}. Add them in Vercel, then redeploy.` });
-  }
-  const me = await User.findById(req.user!.userId).select("email");
-  if (!me || isSyntheticEmail(me.email)) {
-    return res.json({ ok: false, message: "Your owner account has no real email address to send the test to." });
-  }
-  try {
-    const provider = await verifyMail();
-    await sendMail({
-      to: me.email,
-      subject: "Benchmark CBT: test email",
-      text: "If you can read this, email works on the live server: receipts, password resets and reminders will be delivered."
-    });
-    res.json({ ok: true, message: `Sent through ${provider} to ${me.email}. Check your inbox and spam folder.` });
-  } catch (err: any) {
-    res.json({ ok: false, message: err.message });
-  }
 }
 
 // Superadmin: (re)send a payment's receipt to the school's admins.
