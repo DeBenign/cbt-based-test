@@ -19,7 +19,7 @@ interface StudentRow {
   score: number;
   totalMarks: number;
   status: string;
-  submittedAt: string;
+  submittedAt: string | null;
   needsGrading: boolean;
   flagCount: number;
   flaggedEvents: FlaggedEvent[];
@@ -29,7 +29,10 @@ interface ExamResults {
   examTitle: string;
   totalMarks: number;
   classAverage: number;
+  attemptedAverage: number;
+  classSize: number;
   submittedCount: number;
+  absentCount: number;
   results: StudentRow[];
 }
 
@@ -37,7 +40,7 @@ interface MyResult {
   status: string;
   score: number;
   needsGrading: boolean;
-  submittedAt: string;
+  submittedAt: string | null;
 }
 
 export default function Results() {
@@ -130,8 +133,10 @@ export default function Results() {
               </p>
             )}
             <p><strong>Score:</strong> {myResult.score}{myResult.needsGrading ? " (provisional)" : ""}</p>
-            <p><strong>Status:</strong> {myResult.status}</p>
-            <p style={{ marginBottom: 0 }}><strong>Submitted:</strong> {new Date(myResult.submittedAt).toLocaleString()}</p>
+            <p><strong>Status:</strong> {myResult.status === "absent" ? "Did not attempt" : myResult.status}</p>
+            {myResult.status === "absent"
+              ? <p style={{ marginBottom: 0, color: "var(--text-secondary)" }}>You didn't take this exam, so your score is 0.</p>
+              : <p style={{ marginBottom: 0 }}><strong>Submitted:</strong> {myResult.submittedAt ? new Date(myResult.submittedAt).toLocaleString() : "—"}</p>}
           </Card>
         ) : (
           <p style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center" }}><Spinner />Loading exam…</p>
@@ -159,7 +164,10 @@ export default function Results() {
           </div>
           <p style={{ color: "var(--text-secondary)", marginBottom: 16 }}>
             Class average: <strong style={{ color: "var(--text-primary)" }}>{classResults.classAverage} / {classResults.totalMarks}</strong>
-            {" · "}{classResults.submittedCount} submission{classResults.submittedCount === 1 ? "" : "s"}
+            {" "}(all {classResults.classSize} students; those who didn't attempt count as 0)
+            {" · "}{classResults.submittedCount} submitted
+            {classResults.absentCount > 0 && <> · <strong style={{ color: "var(--text-primary)" }}>{classResults.absentCount} did not attempt</strong></>}
+            {classResults.absentCount > 0 && classResults.submittedCount > 0 && <> · average of those who sat it: {classResults.attemptedAverage} / {classResults.totalMarks}</>}
           </p>
           <Card>
             <table style={{ width: "100%" }}>
@@ -188,12 +196,12 @@ export default function Results() {
                           {r.needsGrading && <Badge tone="warning">pending grading</Badge>}
                         </td>
                         <td>
-                          {r.status === "flagged" ? <Badge tone="danger">flagged</Badge> : r.status}
+                          {r.status === "flagged" ? <Badge tone="danger">flagged</Badge> : r.status === "absent" ? <Badge tone="warning">did not attempt</Badge> : r.status}
                         </td>
                         <td>
                           {r.flagCount > 0 ? <Badge tone="warning">{r.flagCount}</Badge> : "—"}
                         </td>
-                        <td>{new Date(r.submittedAt).toLocaleString()}</td>
+                        <td>{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—"}</td>
                       </tr>
                       {isExpanded && (
                         <tr>

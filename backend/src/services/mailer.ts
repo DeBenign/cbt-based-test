@@ -14,6 +14,17 @@ export function mailProvider(env: NodeJS.ProcessEnv = process.env): MailProvider
   return null;
 }
 
+// Names (never values) of the settings still missing, for plain-English diagnostics.
+export function missingMailSettings(env: NodeJS.ProcessEnv = process.env): string[] {
+  const missing: string[] = [];
+  if (!env.MAIL_FROM) missing.push("MAIL_FROM");
+  const smtpStarted = !!(env.SMTP_HOST || env.SMTP_USER || env.SMTP_PASS);
+  if (env.RESEND_API_KEY && !smtpStarted) return missing;
+  if (!smtpStarted) return [...missing, "SMTP_HOST", "SMTP_USER", "SMTP_PASS (or RESEND_API_KEY instead)"];
+  for (const k of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"]) if (!env[k]) missing.push(k);
+  return missing;
+}
+
 export function isMailConfigured(): boolean {
   return mailProvider() !== null;
 }

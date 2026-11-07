@@ -9,6 +9,8 @@ import { applyPayment, voidPayment } from "../services/paymentService";
 import { ensureTrialDates, getAccessStatus, accessExpiry } from "../utils/schoolAccess";
 import { clearAccountCache } from "../utils/accountCheck";
 import { emailReceiptForPayment } from "../services/paymentEmail";
+import { mailProvider, missingMailSettings, sendMail, verifyMail } from "../services/mailer";
+import { isSyntheticEmail } from "../utils/passwordReset";
 import { getMonthTotalsBySchool, effectiveLimit } from "../services/aiUsage";
 import { AI_MODEL } from "../services/questionGenerator";
 import { TERM_DAYS, MAX_TERMS_PER_PAYMENT, effectivePrice, termFee, onlinePaymentsEnabled } from "../utils/billingConfig";
@@ -260,18 +262,42 @@ async function sendReceipt(schoolId: string, paymentId: string, includeVoidReaso
   res.json(buildReceipt(payment, school, { includeVoidReason }));
 }
 
+// Superadmin: "does email work on the live server?" Checks the settings, the SMTP login, then sends a
+// test message to the owner's own address, and says in plain words what is wrong if it fails.
+export async function sendTestEmail(req: AuthedRequest, res: Response) {
+  if (!mailProvider()) {
+    return res.json({ ok: false, message: `Email isn't set up on the server. Missing or empty: ${missingMailSettings().join(", ")}. Add them in Vercel, then redeploy.` });
+  }
+  const me = await User.findById(req.user!.userId).select("email");
+  if (!me || isSyntheticEmail(me.email)) {
+    return res.json({ ok: false, message: "Your owner account has no real email address to send the test to." });
+  }
+  try {
+    const provider = await verifyMail();
+    await sendMail({
+      to: me.email,
+      subject: "Benchmark CBT: test email",
+      text: "If you can read this, email works on the live server: receipts, password resets and reminders will be delivered."
+    });
+    res.json({ ok: true, message: `Sent through ${provider} to ${me.email}. Check your inbox and spam folder.` });
+  } catch (err: any) {
+    res.json({ ok: false, message: err.message });
+  }
+}
+
 // Superadmin: (re)send a payment's receipt to the school's admins.
 export async function emailSchoolReceipt(req: AuthedRequest, res: Response) {
   const result = await emailReceiptForPayment(req.params.id, req.params.paymentId);
-  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  if ("status" in result) return res.status(result.status).json({ error: result.error });
   res.json({ receiptEmail: result });
 }
 
 // School admin: email this receipt to myself.
 export async function emailMyReceipt(req: AuthedRequest, res: Response) {
   const result = await emailReceiptForPayment(req.user!.schoolId, req.params.paymentId, req.user!.userId);
-  if ("error" in result) return res.status(result.status).json({ error: result.error });
-  res.json({ receiptEmail: result });
+  if ("status" in result) return res.status(result.status).json({ error: result.error });
+  const { error: _technicalReason, ...safe } = result; // the SMTP reason is for the platform owner, not a school
+  res.json({ receiptEmail: safe });
 }
 
 export async function getSchoolReceipt(req: AuthedRequest, res: Response) {

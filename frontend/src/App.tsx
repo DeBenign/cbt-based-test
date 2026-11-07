@@ -66,10 +66,10 @@ export default function App() {
                 <Route element={<RequireExactRole allow={["admin", "teacher"]} />}>
                   <Route path="questions" element={<QuestionBank />} />
                   <Route path="curriculum" element={<Curriculum />} />
-                  <Route path="exams/new" element={<ExamBuilder />} />
-                  <Route path="exams/:id/edit" element={<ExamBuilder />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["teacher"]} />}>
+                  <Route path="exams/new" element={<ExamBuilder />} />
+                  <Route path="exams/:id/edit" element={<ExamBuilder />} />
                   <Route path="grading/:examId" element={<GradingQueue />} />
                   <Route path="ai-questions" element={<AIQuestions />} />
                   <Route path="ai-history" element={<AIHistory />} />

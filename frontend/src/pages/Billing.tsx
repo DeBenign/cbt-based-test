@@ -69,7 +69,7 @@ export default function Billing() {
         r.skipped === "mail-not-configured" ? "Email isn't switched on for this platform yet. Open the receipt and print it instead."
         : r.skipped === "no-admin-email" ? "Your admin account has no real email address, so there is nowhere to send it."
         : r.sent > 0 ? "Receipt sent to your email."
-        : "The email couldn't be sent. Please try again."
+        : "The email couldn't be sent. Please tell the platform owner to check the mail settings."
       );
     } catch (err: any) {
       setEmailMsg(err.response?.data?.error || "Couldn't send the receipt.");

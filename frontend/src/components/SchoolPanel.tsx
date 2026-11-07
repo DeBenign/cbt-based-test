@@ -44,15 +44,15 @@ interface PaymentItem {
   canVoid: boolean;
 }
 
-type EmailResult = { sent: number; failed: number; skipped?: string } | undefined;
+type EmailResult = { sent: number; failed: number; skipped?: string; error?: string } | undefined;
 
 function emailNote(r: EmailResult, who: string): string {
   if (!r) return "";
   if (r.skipped === "mail-not-configured") return "Receipt email NOT sent: mail isn't set up on the server (needs MAIL_FROM plus SMTP_* or RESEND_API_KEY).";
   if (r.skipped === "no-admin-email") return "Receipt email NOT sent: this school's admin has no real email address.";
   if (r.sent > 0 && r.failed === 0) return `Receipt emailed to ${who}.`;
-  if (r.sent > 0) return `Receipt emailed to ${r.sent}, but ${r.failed} failed.`;
-  return "Receipt email could not be sent. Try again from the payment list.";
+  if (r.sent > 0) return `Receipt emailed to ${r.sent}, but ${r.failed} failed${r.error ? `: ${r.error}` : ""}.`;
+  return `Receipt email could not be sent${r.error ? `: ${r.error}` : ""}. Use "Send test email" at the top of the Schools page to check the mail settings, then press "Email receipt" on the payment.`;
 }
 
 const DAY = 24 * 60 * 60 * 1000;

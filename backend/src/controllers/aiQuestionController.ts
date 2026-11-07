@@ -5,7 +5,9 @@ import Question from "../models/Question";
 import Subject from "../models/Subject";
 import Class from "../models/Class";
 import User from "../models/User";
+import School from "../models/School";
 import { generateQuestions, checkDifficultyMix, AiNotConfiguredError, AiAccountError, DifficultyMix, GenerateParams } from "../services/questionGenerator";
+import { notifyWrongAnswer } from "../services/reportAlert";
 import { filterDuplicates } from "../services/questionDedupe";
 import { verifyMcqs, AiCheck } from "../services/answerCheck";
 import AiUsage from "../models/AiUsage";
@@ -344,7 +346,8 @@ export async function reportQuestion(req: AuthedRequest, res: Response) {
 
   const run = q.generationId ? await AiUsage.findById(q.generationId).select("modelName") : null;
 
-  // One open report per teacher per question: reporting again just updates it.
+  // One open report per teacher per question: reporting again just updates it (and does not email again).
+  const isNewReport = !(await QuestionReport.exists({ questionId: q._id, reporterId: req.user!.userId, status: "open" }));
   await QuestionReport.findOneAndUpdate(
     { questionId: q._id, reporterId: req.user!.userId, status: "open" },
     {
@@ -361,6 +364,16 @@ export async function reportQuestion(req: AuthedRequest, res: Response) {
     },
     { upsert: true, new: true }
   );
+
+  // A wrong marked answer is the serious one: tell the platform owner straight away.
+  if (v.reason === "wrong_answer" && isNewReport) {
+    const [school, teacher] = await Promise.all([School.findById(q.schoolId).select("name"), User.findById(req.user!.userId).select("name")]);
+    await notifyWrongAnswer({
+      schoolName: school?.name || "A school", teacherName: teacher?.name || "A teacher",
+      questionText: q.questionText, options: q.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect })),
+      note: v.note || undefined, modelName: run?.modelName, aiCheck: q.aiCheck?.status
+    });
+  }
 
   await logActivity(req, {
     action: "questions.ai_report",

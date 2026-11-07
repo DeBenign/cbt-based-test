@@ -27,6 +27,21 @@ export default function SchoolManagement() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [onlyEnding, setOnlyEnding] = useState(false);
+  const [mailTest, setMailTest] = useState<{ ok: boolean; text: string } | null>(null);
+  const [mailTesting, setMailTesting] = useState(false);
+
+  async function handleMailTest() {
+    setMailTesting(true);
+    setMailTest(null);
+    try {
+      const res = await api.post("/schools/mail-test");
+      setMailTest({ ok: res.data.ok, text: res.data.message });
+    } catch (err: any) {
+      setMailTest({ ok: false, text: err.response?.data?.error || "Couldn't run the email check." });
+    } finally {
+      setMailTesting(false);
+    }
+  }
 
   async function loadSchools() {
     const res = await api.get("/schools");
@@ -96,6 +111,21 @@ export default function SchoolManagement() {
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, marginBottom: 0 }}>
           New schools get a 90-day free trial automatically.
         </p>
+      </Card>
+
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ marginBottom: 2 }}>Email check</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Receipts, password resets and reminders all depend on email. Send yourself a test to see if it works on the live site.</p>
+          </div>
+          <button type="button" onClick={handleMailTest} disabled={mailTesting}>{mailTesting ? "Checking…" : "Send test email"}</button>
+        </div>
+        {mailTest && (
+          <p style={{ marginTop: 10, marginBottom: 0, padding: 10, borderRadius: "var(--radius)", fontSize: 13, color: mailTest.ok ? "var(--text-success)" : "var(--text-danger)", background: mailTest.ok ? "var(--bg-success)" : "var(--bg-danger)" }}>
+            {mailTest.text}
+          </p>
+        )}
       </Card>
 
       <h3>All schools ({schools.length})</h3>

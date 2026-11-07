@@ -60,7 +60,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error("mail timed out")), ms))]);
 }
 
-export interface ReceiptEmailResult { sent: number; failed: number; skipped?: "mail-not-configured" | "no-admin-email" }
+export interface ReceiptEmailResult { sent: number; failed: number; skipped?: "mail-not-configured" | "no-admin-email"; error?: string }
 
 // Emails the school's admins who have a real address (or just one of them, when onlyUserId is given).
 // Never throws: a mail problem must not undo or hide a payment that has already been recorded.
@@ -89,15 +89,16 @@ export async function sendPaymentReceipt(params: {
     const results = await Promise.allSettled(
       recipients.map((a) => {
         const mail = buildReceiptEmail({ ...params, adminName: a.name, frontendUrl });
-        return withTimeout(sendMail({ to: a.email, ...mail }), 8000);
+        return withTimeout(sendMail({ to: a.email, ...mail }), 25_000); // Vercel allows 60s; SMTP can be slow on a cold start
       })
     );
     results.forEach((r) => { if (r.status === "rejected") console.error("receipt email failed", r.reason?.message); });
     const sent = results.filter((r) => r.status === "fulfilled").length;
-    return { sent, failed: results.length - sent };
+    const firstError = results.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason?.message as string | undefined;
+    return { sent, failed: results.length - sent, ...(firstError ? { error: firstError } : {}) };
   } catch (err: any) {
     console.error("receipt email error", err?.message);
-    return { sent: 0, failed: 1 };
+    return { sent: 0, failed: 1, error: err?.message };
   }
 }
 

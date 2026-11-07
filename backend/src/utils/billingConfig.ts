@@ -2,9 +2,9 @@
 // All three numbers are PLACEHOLDERS you can change without touching code:
 // set the env vars on the backend (Vercel -> Settings -> Environment Variables).
 
-// How long one paid term of access lasts. A Nigerian term is ~13 weeks plus the
-// holiday that follows, so 120 days covers the term and the break after it.
-export const TERM_DAYS = Number(process.env.TERM_DAYS) || 120;
+// How long one paid term of access lasts: 90 days (about 3 months). Set TERM_DAYS on the
+// backend to change it. NOTE: a TERM_DAYS value in Vercel wins over this default.
+export const TERM_DAYS = Number(process.env.TERM_DAYS) || 90;
 
 // Default fee per student per term (naira). A school can be given its own price
 // by the superadmin (School.pricePerStudent), e.g. a negotiated discount.

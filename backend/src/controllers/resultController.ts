@@ -5,6 +5,7 @@ import Exam from "../models/Exam";
 import Question from "../models/Question";
 import User from "../models/User";
 import { finalizeExpiredAttempts } from "../services/finalizeExpired";
+import { buildRoster, AttemptLite } from "../services/examRoster";
 
 const RESULTS_DELAY_MS = 60 * 60 * 1000; // 1 hour, applies to student, teacher, and admin alike
 
@@ -14,6 +15,33 @@ function resultsUnlockAt(exam: { endTime: Date }): Date {
 
 function isUnlocked(exam: { endTime: Date }): boolean {
   return Date.now() >= resultsUnlockAt(exam).getTime();
+}
+
+// Everyone who was meant to sit this exam: attempts plus class members who never started (score 0).
+async function loadRoster(exam: any) {
+  const attempts = await ExamAttempt.find({
+    examId: exam._id,
+    status: { $in: ["submitted", "auto-submitted", "flagged"] }
+  }).populate("studentId", "name email");
+
+  const students = await User.find({ schoolId: exam.schoolId, role: "student", classId: exam.classId }).select("name email");
+  const questions = await Question.find({ _id: { $in: exam.questionIds } });
+  const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
+
+  const lite: AttemptLite[] = attempts
+    .filter((a) => a.studentId)
+    .map((a) => ({
+      studentId: String((a.studentId as any)._id),
+      studentName: (a.studentId as any).name,
+      email: (a.studentId as any).email,
+      score: a.score,
+      status: a.status as AttemptLite["status"],
+      submittedAt: a.submittedAt,
+      needsGrading: a.needsGrading,
+      flaggedEvents: a.flaggedEvents.map((e) => ({ type: e.type, timestamp: e.timestamp }))
+    }));
+
+  return { totalMarks, ...buildRoster(lite, students.map((u) => ({ id: String(u._id), name: u.name, email: u.email })), totalMarks) };
 }
 
 // Student: their own result for one exam.
@@ -33,7 +61,14 @@ export async function getMyResult(req: AuthedRequest, res: Response) {
     examId: req.params.examId,
     studentId: req.user!.userId
   });
-  if (!attempt) return res.status(404).json({ error: "You did not attempt this exam." });
+  if (!attempt) {
+    // They were in the exam's class but never started it: that is a 0, not a missing result.
+    const me = await User.findById(req.user!.userId).select("classId");
+    if (me?.classId && String(me.classId) === String(exam.classId)) {
+      return res.json({ examId: exam._id, status: "absent", score: 0, needsGrading: false, submittedAt: null });
+    }
+    return res.status(404).json({ error: "You did not attempt this exam." });
+  }
   if (attempt.status === "in-progress") {
     return res.status(400).json({ error: "Exam not yet submitted" });
   }
@@ -65,36 +100,18 @@ export async function getExamResults(req: AuthedRequest, res: Response) {
 
   // Close out abandoned attempts first so no one's result is missing.
   await finalizeExpiredAttempts({ examIds: [exam._id] });
-
-  const attempts = await ExamAttempt.find({
-    examId: exam._id,
-    status: { $in: ["submitted", "auto-submitted", "flagged"] }
-  }).populate("studentId", "name email");
-
-  const questions = await Question.find({ _id: { $in: exam.questionIds } });
-  const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
-
-  const rows = attempts.map((a) => ({
-    studentId: (a.studentId as any)._id,
-    studentName: (a.studentId as any).name,
-    score: a.score ?? 0,
-    totalMarks,
-    status: a.status,
-    submittedAt: a.submittedAt,
-    needsGrading: a.needsGrading,
-    flagCount: a.flaggedEvents.length,
-    flaggedEvents: a.flaggedEvents.map((e) => ({ type: e.type, timestamp: e.timestamp }))
-  }));
-
-  const average = rows.length > 0 ? rows.reduce((sum, r) => sum + r.score, 0) / rows.length : 0;
+  const roster = await loadRoster(exam);
 
   res.json({
     examId: exam._id,
     examTitle: exam.title,
-    totalMarks,
-    classAverage: Math.round(average * 100) / 100,
-    submittedCount: rows.length,
-    results: rows.sort((a, b) => b.score - a.score)
+    totalMarks: roster.totalMarks,
+    classAverage: roster.classAverage,           // everyone in the class, absentees counted as 0
+    attemptedAverage: roster.attemptedAverage,   // only students who sat the exam
+    classSize: roster.classSize,
+    submittedCount: roster.submittedCount,
+    absentCount: roster.absentCount,
+    results: roster.rows
   });
 }
 
@@ -111,31 +128,22 @@ export async function exportExamResultsCsv(req: AuthedRequest, res: Response) {
     });
   }
 
-  // Close out abandoned attempts first so no one's result is missing.
   await finalizeExpiredAttempts({ examIds: [exam._id] });
-
-  const attempts = await ExamAttempt.find({
-    examId: exam._id,
-    status: { $in: ["submitted", "auto-submitted", "flagged"] }
-  }).populate("studentId", "name email");
-
-  const questions = await Question.find({ _id: { $in: exam.questionIds } });
-  const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
+  const roster = await loadRoster(exam);
 
   const escape = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [["Student Name", "Email", "Score", "Total Marks", "Status", "Flags", "Submitted At"].join(",")];
 
-  for (const a of attempts) {
-    const student: any = a.studentId;
+  for (const r of roster.rows) {
     lines.push(
       [
-        escape(student?.name || ""),
-        escape(student?.email || ""),
-        a.score ?? 0,
-        totalMarks,
-        a.status,
-        a.flaggedEvents.length,
-        a.submittedAt ? new Date(a.submittedAt).toISOString() : ""
+        escape(r.studentName),
+        escape(r.email),
+        r.score,
+        r.totalMarks,
+        r.status === "absent" ? "absent (did not attempt)" : r.status,
+        r.flagCount,
+        r.submittedAt ? new Date(r.submittedAt).toISOString() : ""
       ].join(",")
     );
   }
@@ -166,6 +174,16 @@ export async function getStudentSummary(req: AuthedRequest, res: Response) {
       score: a.score ?? 0,
       submittedAt: a.submittedAt
     }));
+
+  // Exams set for their class that are past the results gate and that they never started count as 0.
+  const attemptedIds = new Set(attempts.map((a) => String((a.examId as any)?._id)));
+  const classExams = student.classId
+    ? await Exam.find({ schoolId: student.schoolId, classId: student.classId, status: { $ne: "draft" } }).select("title subjectId endTime")
+    : [];
+  for (const e of classExams) {
+    if (attemptedIds.has(String(e._id)) || !isUnlocked(e)) continue;
+    results.push({ examId: e._id as any, examTitle: e.title, subjectId: e.subjectId as any, score: 0, submittedAt: null as any, absent: true } as any);
+  }
 
   res.json({ studentId: student._id, studentName: student.name, results });
 }
