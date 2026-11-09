@@ -27,6 +27,8 @@ import Curriculum from "./pages/Curriculum";
 import AIQuestions from "./pages/AIQuestions";
 import AIHistory from "./pages/AIHistory";
 import AIReports from "./pages/AIReports";
+import Analytics from "./pages/Analytics";
+import MyProgress from "./pages/MyProgress";
 import Activity from "./pages/Activity";
 import PersonActivity from "./pages/PersonActivity";
 import AttemptDetail from "./pages/AttemptDetail";
@@ -66,6 +68,7 @@ export default function App() {
                 <Route element={<RequireExactRole allow={["admin", "teacher"]} />}>
                   <Route path="questions" element={<QuestionBank />} />
                   <Route path="curriculum" element={<Curriculum />} />
+                  <Route path="analytics" element={<Analytics />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["teacher"]} />}>
                   <Route path="exams/new" element={<ExamBuilder />} />
@@ -76,6 +79,7 @@ export default function App() {
                 </Route>
                 <Route element={<RequireExactRole allow={["student"]} />}>
                   <Route path="exams/:id/take" element={<TestTaking />} />
+                  <Route path="progress" element={<MyProgress />} />
                 </Route>
                 <Route path="exams" element={<ExamList />} />
                 <Route path="results" element={<Results />} />

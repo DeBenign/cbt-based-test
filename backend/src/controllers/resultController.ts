@@ -7,15 +7,7 @@ import User from "../models/User";
 import { finalizeExpiredAttempts } from "../services/finalizeExpired";
 import { buildRoster, AttemptLite } from "../services/examRoster";
 
-const RESULTS_DELAY_MS = 60 * 60 * 1000; // 1 hour, applies to student, teacher, and admin alike
-
-function resultsUnlockAt(exam: { endTime: Date }): Date {
-  return new Date(new Date(exam.endTime).getTime() + RESULTS_DELAY_MS);
-}
-
-function isUnlocked(exam: { endTime: Date }): boolean {
-  return Date.now() >= resultsUnlockAt(exam).getTime();
-}
+import { resultsUnlockAt, isUnlocked } from "../utils/resultsGate";
 
 // Everyone who was meant to sit this exam: attempts plus class members who never started (score 0).
 async function loadRoster(exam: any) {

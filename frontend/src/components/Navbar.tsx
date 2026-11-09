@@ -52,6 +52,12 @@ export default function Navbar({ logoUrl, schoolName }: NavbarProps) {
         {user?.role === "teacher" && (
           <Link to={rolePath("/ai-questions")} style={{ color: "var(--text-secondary)" }}>AI questions</Link>
         )}
+        {(user?.role === "teacher" || user?.role === "admin") && (
+          <Link to={rolePath("/analytics")} style={{ color: "var(--text-secondary)" }}>Analytics</Link>
+        )}
+        {user?.role === "student" && (
+          <Link to={rolePath("/progress")} style={{ color: "var(--text-secondary)" }}>My progress</Link>
+        )}
         {user?.role !== "superadmin" && (
           <Link to={rolePath("/exams")} style={{ color: "var(--text-secondary)" }}>Exams</Link>
         )}
