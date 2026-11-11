@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Card from "../components/Card";
@@ -6,6 +7,7 @@ import Badge from "../components/Badge";
 import PageShell from "../components/PageShell";
 import Spinner from "../components/Spinner";
 import { LineChart, Histogram, HBars, trendLabel } from "../components/charts";
+import InsightsNav from "../components/InsightsNav";
 
 interface Option { classId: string; subjectId: string; className: string; subjectName: string; exams: number }
 interface ExamRow { examId: string; title: string; date: string; average: number | null; sat: number; classSize: number; absent: number; participation: number; pendingGrading: number }
@@ -38,9 +40,16 @@ export default function Analytics() {
   const [data, setData] = useState<Data | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState<string | null>(null);
+  const [search] = useSearchParams();
 
   useEffect(() => {
-    api.get("/analytics/options").then((r) => { setOptions(r.data); if (r.data[0]) setPick(`${r.data[0].classId}|${r.data[0].subjectId}`); })
+    api.get("/analytics/options").then((r) => {
+      setOptions(r.data);
+      // Arriving from the school overview: open the class that was clicked.
+      const wanted = (r.data as Option[]).find((o) => o.classId === search.get("class") && (!search.get("subject") || o.subjectId === search.get("subject")));
+      const first = wanted ?? r.data[0];
+      if (first) setPick(`${first.classId}|${first.subjectId}`);
+    })
       .catch((e) => setError(e.response?.data?.error || "Couldn't load your classes."));
   }, []);
 
@@ -61,6 +70,7 @@ export default function Analytics() {
   return (
     <PageShell maxWidth={820}>
       <h1>Class analytics</h1>
+      <InsightsNav />
       <p style={{ color: "var(--text-secondary)", marginBottom: 12 }}>
         {user?.role === "admin" ? "Read-only view of how each class is doing." : "How your classes are doing in the subjects you teach."} Based on Benchmark CBT exams only.
       </p>

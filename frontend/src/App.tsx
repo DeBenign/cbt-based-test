@@ -29,6 +29,11 @@ import AIHistory from "./pages/AIHistory";
 import AIReports from "./pages/AIReports";
 import Analytics from "./pages/Analytics";
 import MyProgress from "./pages/MyProgress";
+import SchoolOverview from "./pages/SchoolOverview";
+import Remarks from "./pages/Remarks";
+import StaffIndicators from "./pages/StaffIndicators";
+import ReportCards from "./pages/ReportCards";
+import MyReportCard from "./pages/MyReportCard";
 import Activity from "./pages/Activity";
 import PersonActivity from "./pages/PersonActivity";
 import AttemptDetail from "./pages/AttemptDetail";
@@ -59,6 +64,8 @@ export default function App() {
                 <Route element={<RequireExactRole allow={["admin"]} />}>
                   <Route path="setup" element={<Setup />} />
                   <Route path="users" element={<UserManagement />} />
+                  <Route path="overview" element={<SchoolOverview />} />
+                  <Route path="report-cards" element={<ReportCards />} />
                   <Route path="billing" element={<Billing />} />
                   <Route path="branding" element={<Branding />} />
                   <Route path="activity" element={<Activity />} />
@@ -69,6 +76,8 @@ export default function App() {
                   <Route path="questions" element={<QuestionBank />} />
                   <Route path="curriculum" element={<Curriculum />} />
                   <Route path="analytics" element={<Analytics />} />
+                  <Route path="remarks" element={<Remarks />} />
+                  <Route path="staff" element={<StaffIndicators />} />
                 </Route>
                 <Route element={<RequireExactRole allow={["teacher"]} />}>
                   <Route path="exams/new" element={<ExamBuilder />} />
@@ -80,6 +89,7 @@ export default function App() {
                 <Route element={<RequireExactRole allow={["student"]} />}>
                   <Route path="exams/:id/take" element={<TestTaking />} />
                   <Route path="progress" element={<MyProgress />} />
+                  <Route path="report-card" element={<MyReportCard />} />
                 </Route>
                 <Route path="exams" element={<ExamList />} />
                 <Route path="results" element={<Results />} />

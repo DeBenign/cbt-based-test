@@ -86,7 +86,7 @@ export default function AppLayout() {
     <div style={{ minHeight: "100vh", background: "var(--surface-0)" }}>
       <Navbar logoUrl={branding?.logoUrl} schoolName={branding?.schoolName} />
       {!isOnline && (
-        <div style={{ padding: "8px 24px", fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", textAlign: "center" }}>
+        <div className="no-print" style={{ padding: "8px 24px", fontSize: 13, color: "var(--text-warning)", background: "var(--bg-warning)", textAlign: "center" }}>
           You're offline. The app still works, but anything needing a connection — saving, submitting, loading new data — will wait until you're back online.
         </div>
       )}
@@ -98,7 +98,7 @@ export default function AppLayout() {
         </div>
       )}
       {user && (
-        <div style={{ padding: "10px 24px", fontSize: 13, color: "var(--text-secondary)", borderBottom: "0.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="no-print" style={{ padding: "10px 24px", fontSize: 13, color: "var(--text-secondary)", borderBottom: "0.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span>Welcome back, {user.name}</span>
           {user.role === "admin" && expiry && (
             <Link to="/admin/billing" title={`Access ends ${new Date(expiry.endsAt).toLocaleDateString()}`} style={{ textDecoration: "none" }}>
@@ -111,7 +111,7 @@ export default function AppLayout() {
       )}
       <Outlet />
       {user && user.role !== "superadmin" && !/\/exams\/[^/]+\/take/.test(pathname) && (
-        <div style={{ padding: "18px 24px 28px", textAlign: "center", fontSize: 12, color: "var(--text-muted)", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
+        <div className="no-print" style={{ padding: "18px 24px 28px", textAlign: "center", fontSize: 12, color: "var(--text-muted)", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
           Powered by <BrandLogo size={16} to={null} />
         </div>
       )}

@@ -14,6 +14,8 @@ import adminExamRoutes from "./routes/adminExamRoutes";
 import schoolRoutes from "./routes/schoolRoutes";
 import aiReportRoutes from "./routes/aiReportRoutes";
 import analyticsRoutes from "./routes/analyticsRoutes";
+import remarkRoutes from "./routes/remarkRoutes";
+import reportCardRoutes from "./routes/reportCardRoutes";
 import gradingRoutes from "./routes/gradingRoutes";
 import billingRoutes from "./routes/billingRoutes";
 import { requireAuth } from "./middleware/auth";
@@ -71,6 +73,8 @@ v1.use("/admin/questions", requireAuth, requireRole("admin"), requireActiveSubsc
 v1.use("/admin/exams", requireAuth, requireRole("admin"), requireActiveSubscription, adminExamRoutes);
 v1.use("/admin/curriculum", requireAuth, requireRole("admin"), requireActiveSubscription, curriculumRoutes);
 v1.use("/admin/analytics", requireAuth, requireRole("admin"), requireActiveSubscription, analyticsRoutes);
+v1.use("/admin/remarks", requireAuth, requireRole("admin"), requireActiveSubscription, remarkRoutes);
+v1.use("/admin/reportcards", requireAuth, requireRole("admin"), requireActiveSubscription, reportCardRoutes);
 v1.use("/admin/results", requireAuth, requireRole("admin"), requireActiveSubscription, resultRoutes);
 v1.use("/admin/activity", requireAuth, requireRole("admin"), requireActiveSubscription, activityRoutes);
 v1.use("/admin/review", requireAuth, requireRole("admin"), requireActiveSubscription, reviewRoutes);
@@ -83,6 +87,7 @@ v1.use("/teacher/questions", requireAuth, requireRole("teacher"), requireActiveS
 v1.use("/teacher/curriculum", requireAuth, requireRole("teacher"), requireActiveSubscription, curriculumRoutes);
 v1.use("/teacher/exams", requireAuth, requireRole("teacher"), requireActiveSubscription, examRoutes);
 v1.use("/teacher/analytics", requireAuth, requireRole("teacher"), requireActiveSubscription, analyticsRoutes);
+v1.use("/teacher/remarks", requireAuth, requireRole("teacher"), requireActiveSubscription, remarkRoutes);
 v1.use("/teacher/results", requireAuth, requireRole("teacher"), requireActiveSubscription, resultRoutes);
 v1.use("/teacher/grading", requireAuth, requireRole("teacher"), requireActiveSubscription, gradingRoutes);
 
@@ -91,6 +96,8 @@ v1.use("/student/branding", requireAuth, requireRole("student"), brandingRoutes)
 v1.use("/student/exams", requireAuth, requireRole("student"), examRoutes);
 v1.use("/student/attempts", requireAuth, requireRole("student"), attemptRoutes);
 v1.use("/student/analytics", requireAuth, requireRole("student"), requireActiveSubscription, analyticsRoutes);
+v1.use("/student/remarks", requireAuth, requireRole("student"), requireActiveSubscription, remarkRoutes);
+v1.use("/student/reportcards", requireAuth, requireRole("student"), requireActiveSubscription, reportCardRoutes);
 v1.use("/student/results", requireAuth, requireRole("student"), resultRoutes);
 
 app.use("/api/v1", v1);

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../services/api";
+import { useRolePath } from "../hooks/useRolePath";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import PageShell from "../components/PageShell";
@@ -33,10 +35,13 @@ const show = (v: number | null) => (v === null ? "—" : `${v}%`);
 
 // A student's own progress: per subject over time against the class average, and which topics need practice.
 export default function MyProgress() {
+  const rolePath = useRolePath();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [remarks, setRemarks] = useState<{ kind: string; subjectName: string | null; text: string }[]>([]);
 
   useEffect(() => {
+    api.get("/remarks/me").then((r) => setRemarks(r.data)).catch(() => { /* remarks are optional */ });
     api.get("/analytics/me").then((r) => setData(r.data)).catch((e) => setError(e.response?.data?.error || "Couldn't load your progress."));
   }, []);
 
@@ -50,6 +55,19 @@ export default function MyProgress() {
       <p style={{ color: "var(--text-secondary)", marginBottom: 16 }}>Based on your exams taken on Benchmark CBT only. It does not include class work or assignments marked elsewhere.</p>
 
       {!o && <p style={{ color: "var(--text-secondary)" }}>{data.message || "No results yet."}</p>}
+      {o && <p style={{ marginBottom: 16 }}><Link to={rolePath("/report-card")}>Print my report card</Link></p>}
+
+      {remarks.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Remarks from your teachers</h3>
+          {remarks.map((r, i) => (
+            <div key={i} style={{ padding: "8px 0", borderTop: i ? "0.5px solid var(--border)" : "none" }}>
+              <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>{r.kind === "overall" ? "Overall" : r.subjectName}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 14 }}>{r.text}</p>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {o && (
         <>
