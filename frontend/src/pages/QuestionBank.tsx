@@ -6,6 +6,7 @@ import { Question, Subject, ClassRoom } from "../types";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import ReportQuestion from "../components/ReportQuestion";
+import QuestionImport from "../components/QuestionImport";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import { useRolePath } from "../hooks/useRolePath";
@@ -185,6 +186,8 @@ export default function QuestionBank() {
           </div>
         </div>
       </Card>
+
+      {canManage && <QuestionImport subjects={visibleSubjects} classes={classes} onDone={loadQuestions} />}
 
       {canManage && (
         <Card style={{ marginBottom: 24 }}>

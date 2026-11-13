@@ -8,6 +8,7 @@ import {
   updateQuestion,
   deleteQuestion
 } from "../controllers/questionController";
+import { importQuestions } from "../controllers/questionImportController";
 import { generateDraftQuestions, approveDrafts, regenerateDraft, discardDrafts, getAiUsage, listAiHistory, getAiGeneration, reportQuestion } from "../controllers/aiQuestionController";
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use(requireAuth);
 
 router.get("/", asyncHandler(listQuestions));
 router.post("/", requireRole("teacher"), asyncHandler(createQuestion));
+router.post("/import", requireRole("teacher"), asyncHandler(importQuestions));
 router.post("/generate", requireRole("teacher"), asyncHandler(generateDraftQuestions));
 router.get("/ai-usage", requireRole("teacher"), asyncHandler(getAiUsage));
 router.get("/ai-history", requireRole("teacher"), asyncHandler(listAiHistory));
