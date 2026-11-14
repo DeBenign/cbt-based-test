@@ -35,8 +35,31 @@ function savePendingToStorage(attemptId: string, pending: Map<string, PendingAns
   }
 }
 
+function navKey(attemptId: string) {
+  return `cbt_nav_${attemptId}`;
+}
+
+// Where the student was and which questions they moved past, so a reload keeps the colours.
+function loadNav(attemptId: string): { current: number; seen: string[] } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(navKey(attemptId)) || "null");
+    return { current: Number(raw?.current) || 0, seen: Array.isArray(raw?.seen) ? raw.seen : [] };
+  } catch {
+    return { current: 0, seen: [] };
+  }
+}
+
+function saveNav(attemptId: string, current: number, seen: Set<string>) {
+  try {
+    localStorage.setItem(navKey(attemptId), JSON.stringify({ current, seen: Array.from(seen) }));
+  } catch {
+    // not critical
+  }
+}
+
 function clearPendingStorage(attemptId: string) {
   try {
+    localStorage.removeItem(navKey(attemptId));
     localStorage.removeItem(localStorageKey(attemptId));
   } catch {
     // nothing to do
@@ -69,6 +92,8 @@ export default function TestTaking() {
   const [violationCount, setViolationCount] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [hasPendingLocally, setHasPendingLocally] = useState(false);
+  const [current, setCurrent] = useState(0); // index of the question on screen
+  const [seen, setSeen] = useState<Set<string>>(new Set()); // questions the student has moved away from
 
   const pendingRef = useRef<Map<string, PendingAnswer>>(new Map());
   const attemptIdRef = useRef<string | null>(null);
@@ -131,7 +156,11 @@ export default function TestTaking() {
         if (leftover.length > 0) setHasPendingLocally(true);
 
         setAnswers(restored);
-          } catch (err: any) {
+
+        const nav = loadNav(attempt._id);
+        setCurrent(Math.min(Math.max(0, nav.current), Math.max(0, qs.length - 1)));
+        setSeen(new Set(nav.seen));
+      } catch (err: any) {
         if (err.response?.data?.alreadySubmitted) {
           navigate(rolePath("/exams"), { state: { message: "This exam was already submitted." } });
           return;
@@ -283,6 +312,30 @@ export default function TestTaking() {
     persistPending(questionId, { questionId, answerText: text, clientTimestamp: Date.now() });
   }
 
+  function goTo(index: number) {
+    if (index < 0 || index >= questions.length || index === current) return;
+    const nextSeen = new Set(seen);
+    nextSeen.add(questions[current]._id); // leaving this one: if it is still blank it turns red
+    setSeen(nextSeen);
+    setCurrent(index);
+    if (attemptIdRef.current) saveNav(attemptIdRef.current, index, nextSeen);
+    window.scrollTo({ top: 0 });
+  }
+
+  const isAnswered = (qid: string) => (answers[qid] || "").trim().length > 0;
+
+  // green = answered, red = moved past without answering, amber = not answered yet
+  function statusOf(qid: string): "answered" | "skipped" | "pending" {
+    if (isAnswered(qid)) return "answered";
+    return seen.has(qid) ? "skipped" : "pending";
+  }
+
+  function confirmAndSubmit() {
+    const blank = questions.filter((q) => !isAnswered(q._id)).length;
+    if (blank > 0 && !window.confirm(`You have ${blank} unanswered question${blank > 1 ? "s" : ""}. Submit anyway?`)) return;
+    handleSubmit(false);
+  }
+
   async function handleSubmit(auto = false) {
     if (!attemptId || submitted) return;
     setSubmitted(true);
@@ -351,6 +404,16 @@ export default function TestTaking() {
     syncLabel = "Saves automatically as you answer";
   }
 
+  const q = questions[current];
+  const idx = current;
+  const answeredCount = questions.filter((x) => isAnswered(x._id)).length;
+  const isLast = current === questions.length - 1;
+  const STATUS_COLORS = {
+    answered: { bg: "#16a34a", fg: "#fff", label: "answered" },
+    skipped: { bg: "#dc2626", fg: "#fff", label: "skipped, not answered" },
+    pending: { bg: "#f59e0b", fg: "#1f1300", label: "not answered yet" }
+  } as const;
+
   return (
     <PageShell maxWidth={600}>
       <Card>
@@ -387,7 +450,7 @@ export default function TestTaking() {
 
         {error && <p style={{ color: "var(--text-warning)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
 
-        {questions.map((q, idx) => (
+        {q && (
           <div key={q._id} style={{ marginBottom: 20 }}>
             <p style={{ fontWeight: 500, marginBottom: 8 }}>
               <span style={{ color: "var(--text-secondary)" }}>{idx + 1}.</span> {q.questionText}
@@ -438,13 +501,68 @@ export default function TestTaking() {
               />
             )}
           </div>
-        ))}
+        )}
+
+        {questions.length > 0 && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <button type="button" onClick={() => goTo(current - 1)} disabled={current === 0 || submitted}>← Previous</button>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                Question {current + 1} of {questions.length} · {answeredCount} answered
+              </span>
+              <button type="button" onClick={() => goTo(current + 1)} disabled={isLast || submitted}>Next →</button>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }} role="group" aria-label="Question navigator">
+                {questions.map((item, i) => {
+                  const st = STATUS_COLORS[statusOf(item._id)];
+                  const here = i === current;
+                  return (
+                    <button
+                      key={item._id}
+                      type="button"
+                      onClick={() => goTo(i)}
+                      disabled={submitted}
+                      aria-label={`Question ${i + 1}, ${st.label}${here ? ", current question" : ""}`}
+                      aria-current={here ? "step" : undefined}
+                      style={{
+                        width: 38,
+                        height: 38,
+                        padding: 0,
+                        borderRadius: 8,
+                        fontWeight: 600,
+                        fontSize: 13,
+                        background: st.bg,
+                        color: st.fg,
+                        border: "none",
+                        outline: here ? "3px solid var(--text-primary, #111)" : "none",
+                        outlineOffset: 2,
+                        cursor: "pointer"
+                      }}
+                    >
+                      {i + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>
+                {(["answered", "pending", "skipped"] as const).map((k) => (
+                  <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: STATUS_COLORS[k].bg, display: "inline-block" }} />
+                    {k === "answered" ? "Answered" : k === "pending" ? "Not answered yet" : "Skipped / unanswered"}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTop: "0.5px solid var(--border)" }}>
           <span style={{ fontSize: 12, color: isOnline ? "var(--text-muted)" : "var(--text-warning)" }}>
             {syncLabel}
           </span>
-          <PrimaryButton onClick={() => handleSubmit(false)} disabled={submitted}>
+          <PrimaryButton onClick={confirmAndSubmit} disabled={submitted}>
             {submitted ? "Submitting…" : "Submit exam"}
           </PrimaryButton>
         </div>
