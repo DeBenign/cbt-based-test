@@ -15,6 +15,7 @@ interface ParsedRow {
   role?: string;
   class?: string;
   subjects?: string;
+  classes?: string;
   email?: string;
 }
 
@@ -36,6 +37,7 @@ const HEADER_ALIASES: Record<string, keyof ParsedRow> = {
   role: "role", type: "role",
   class: "class", classroom: "class", "class name": "class", form: "class", grade: "class",
   subjects: "subjects", subject: "subjects",
+  classes: "classes", "classes taught": "classes", "teaches classes": "classes",
   email: "email", "e-mail": "email", "email address": "email"
 };
 
@@ -112,9 +114,9 @@ export default function BulkUpload({ classes, onDone }: { classes: ClassRoom[]; 
       ]);
     } else {
       downloadCsv("teachers-template.csv", [
-        ["name", "subjects", "email"],
-        ["Mrs Ngozi Eze", "Basic Science; Mathematics", "ngozi@school.com"],
-        ["Mr Bola Ade", "English Language", ""]
+        ["name", "subjects", "classes", "email"],
+        ["Mrs Ngozi Eze", "Basic Science; Mathematics", `${classes[0]?.name || "JSS1A"}; ${classes[1]?.name || "JSS1B"}`, "ngozi@school.com"],
+        ["Mr Bola Ade", "English Language", classes[0]?.name || "JSS1A", ""]
       ]);
     }
   }
@@ -210,7 +212,7 @@ export default function BulkUpload({ classes, onDone }: { classes: ClassRoom[]; 
           <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {defaultRole === "student"
               ? <>Columns: <b>name</b>, <b>class</b> (must match a class in Setup exactly, e.g. JSS1A). Optional: email.</>
-              : <>Columns: <b>name</b>, <b>subjects</b> (separate several with ; — must match Setup), optional <b>email</b>. A row can also have a <b>role</b> column to mix students and teachers.</>}
+              : <>Columns: <b>name</b>, <b>subjects</b> and <b>classes</b> (separate several with ; — must match Setup exactly; a teacher can only work in the classes listed), optional <b>email</b>. A row can also have a <b>role</b> column to mix students and teachers.</>}
           </p>
 
           <input
@@ -231,7 +233,7 @@ export default function BulkUpload({ classes, onDone }: { classes: ClassRoom[]; 
                   <tbody>
                     {rows.slice(0, 5).map((r) => (
                       <tr key={r.rowNumber}>
-                        <td>{r.rowNumber}</td><td>{r.name || "—"}</td><td>{r.class || r.subjects || "—"}</td><td>{r.email || "—"}</td>
+                        <td>{r.rowNumber}</td><td>{r.name || "—"}</td><td>{r.class || [r.subjects, r.classes].filter(Boolean).join(" · ") || "—"}</td><td>{r.email || "—"}</td>
                       </tr>
                     ))}
                   </tbody>

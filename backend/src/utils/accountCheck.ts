@@ -41,7 +41,11 @@ export async function checkAccount(p: AuthPayload): Promise<AccountCheck> {
 }
 
 async function lookup(p: AuthPayload): Promise<AccountCheck> {
-  const user = await User.findById(p.userId).select("role schoolId mustChangePassword passwordChangedAt").lean();
+  // Both reads start together; a cold serverless instance pays one round trip, not two.
+  const [user, school] = await Promise.all([
+    User.findById(p.userId).select("role schoolId mustChangePassword passwordChangedAt").lean(),
+    p.schoolId ? School.findById(p.schoolId).select("isActive").lean() : Promise.resolve(null)
+  ]);
   if (!user) return { ok: false, message: "Your account no longer exists. Please contact your school." };
   if (user.role !== p.role || String(user.schoolId ?? "") !== String(p.schoolId ?? "")) {
     return { ok: false, message: "Your account has changed. Please sign in again." };
@@ -50,7 +54,6 @@ async function lookup(p: AuthPayload): Promise<AccountCheck> {
     return { ok: false, message: "Your password was changed. Please sign in again." };
   }
   if (user.schoolId) {
-    const school = await School.findById(user.schoolId).select("isActive").lean();
     if (!school || !school.isActive) {
       return { ok: false, message: "Your school's account is no longer active. Please contact your school." };
     }

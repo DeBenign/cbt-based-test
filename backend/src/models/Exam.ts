@@ -34,4 +34,8 @@ const examSchema = new Schema<IExam>({
   createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true }
 });
 
+// Lists and the "close finished exams" sweep always start from school + class/status.
+examSchema.index({ schoolId: 1, classId: 1, status: 1, startTime: 1 });
+examSchema.index({ schoolId: 1, status: 1, endTime: 1 });
+
 export default model<IExam>("Exam", examSchema);

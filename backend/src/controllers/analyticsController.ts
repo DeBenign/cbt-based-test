@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { isValidObjectId } from "mongoose";
 import { AuthedRequest } from "../middleware/auth";
+import { loadTeacherScope, denyReason } from "../utils/teacherScope";
 import Exam from "../models/Exam";
 import User from "../models/User";
 import Class from "../models/Class";
@@ -80,14 +81,14 @@ export async function getMyAnalytics(req: AuthedRequest, res: Response) {
 }
 
 // ---- teacher / admin: pick a class and subject ---------------------------------------
-async function teacherSubjectIds(userId: string): Promise<string[]> {
-  const u = await User.findById(userId).select("subjectIds");
-  return (u?.subjectIds ?? []).map(String);
-}
 
 export async function listAnalyticsOptions(req: AuthedRequest, res: Response) {
   const filter: Record<string, unknown> = { schoolId: req.user!.schoolId, status: { $ne: "draft" } };
-  if (req.user!.role === "teacher") filter.subjectId = { $in: await teacherSubjectIds(req.user!.userId) };
+  if (req.user!.role === "teacher") {
+    const scope = await loadTeacherScope(req.user!.userId);
+    filter.subjectId = { $in: scope.subjectIds };
+    filter.classId = { $in: scope.classIds };
+  }
 
   const exams = (await Exam.find(filter).select("classId subjectId endTime")).filter((e) => isUnlocked(e));
   const counts = new Map<string, { classId: string; subjectId: string; exams: number }>();
@@ -115,8 +116,9 @@ export async function getClassAnalytics(req: AuthedRequest, res: Response) {
   if (!classId || !subjectId || !isValidObjectId(classId) || !isValidObjectId(subjectId)) {
     return res.status(400).json({ error: "Choose a class and a subject." });
   }
-  if (req.user!.role === "teacher" && !(await teacherSubjectIds(req.user!.userId)).includes(subjectId)) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
+  if (req.user!.role === "teacher") {
+    const denied = denyReason(await loadTeacherScope(req.user!.userId), subjectId, classId);
+    if (denied) return res.status(403).json({ error: denied });
   }
   const [cls, subject] = await Promise.all([
     Class.findOne({ _id: classId, schoolId: req.user!.schoolId }).select("name"),

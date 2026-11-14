@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -10,6 +10,7 @@ import QuestionImport from "../components/QuestionImport";
 import PrimaryButton from "../components/PrimaryButton";
 import PageShell from "../components/PageShell";
 import { useRolePath } from "../hooks/useRolePath";
+import { classesForUser } from "../utils/teacherClasses";
 
 const emptyOptions = [
   { text: "", isCorrect: true },
@@ -79,12 +80,25 @@ export default function QuestionBank() {
   }, [subjects, user?.role]);
 
   const subject = visibleSubjects.find((s) => s._id === subjectId);
-  const classOptions = classes.filter((c) => subject?.classIds.includes(c._id));
+  // A teacher only ever works in the classes the admin assigned to them.
+  const myClasses = classesForUser(user, classes);
+  const classOptions = myClasses.filter((c) => subject?.classIds.includes(c._id));
+
+  // Set when an import (or "View in bank") asks for a specific subject + class.
+  const pendingClass = useRef<string | null>(null);
 
   useEffect(() => {
-    setClassId(classOptions[0]?._id || "");
+    const wanted = pendingClass.current;
+    pendingClass.current = null;
+    setClassId(wanted && classOptions.some((c) => c._id === wanted) ? wanted : classOptions[0]?._id || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectId, classes]);
+  }, [subjectId, classes, user?.classIds?.join(",")]);
+
+  function showInBank(subId: string, clsId: string) {
+    if (subId === subjectId) { setClassId(clsId); return; }
+    pendingClass.current = clsId;
+    setSubjectId(subId);
+  }
 
   useEffect(() => {
     if (subjectId && classId) loadQuestions();
@@ -187,7 +201,24 @@ export default function QuestionBank() {
         </div>
       </Card>
 
-      {canManage && <QuestionImport subjects={visibleSubjects} classes={classes} onDone={loadQuestions} />}
+      {canManage && myClasses.length === 0 && classes.length > 0 && (
+        <Card style={{ marginBottom: 24 }}>
+          <p style={{ marginBottom: 0 }}>
+            You haven't been assigned any classes yet, so there's nothing to add or import. Ask your school admin to assign your classes.
+          </p>
+        </Card>
+      )}
+
+      {canManage && myClasses.length > 0 && (
+        <QuestionImport
+          subjects={visibleSubjects}
+          classes={myClasses}
+          subjectId={subjectId}
+          classId={classId}
+          onDone={loadQuestions}
+          onShowInBank={showInBank}
+        />
+      )}
 
       {canManage && (
         <Card style={{ marginBottom: 24 }}>

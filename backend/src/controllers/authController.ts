@@ -14,7 +14,7 @@ import { mongoThrottleStore, checkLoginAllowed, recordLoginFailure, recordLoginS
 // admin can only ever create users inside their own school.
 export async function register(req: AuthedRequest, res: Response) {
   try {
-    const { name, email, password, role, classId, subjectIds } = req.body;
+    const { name, email, password, role, classId, subjectIds, classIds } = req.body;
     const existing = await User.findOne({ email });
     if (existing) return res.status(409).json({ error: "Email already registered" });
 
@@ -26,7 +26,8 @@ export async function register(req: AuthedRequest, res: Response) {
       passwordHash,
       role,
       classId,
-      subjectIds
+      subjectIds,
+      classIds: role === "teacher" ? classIds : undefined
     });
 
     return res.status(201).json({ id: user._id, name: user.name, email: user.email, role: user.role });
@@ -106,6 +107,7 @@ export async function login(req: Request, res: Response) {
         role: user.role,
         classId: user.classId,
         subjectIds: user.subjectIds,
+        classIds: user.classIds,
         mustChangePassword: !!user.mustChangePassword
       }
     });
@@ -136,4 +138,20 @@ export async function changeOwnPassword(req: AuthedRequest, res: Response) {
   forgetAccount(String(user._id));
   // Hand back a fresh token: the one used for this request predates the change.
   res.json({ message: "Password changed.", token: signToken(user) });
+}
+
+// GET /auth/me -- the signed-in person's current subjects and classes, so a teacher's screens
+// follow the admin's latest assignments without signing out and back in.
+export async function me(req: AuthedRequest, res: Response) {
+  const user = await User.findById(req.user!.userId).select("name role classId subjectIds classIds mustChangePassword").lean();
+  if (!user) return res.status(404).json({ error: "Account not found." });
+  res.json({
+    id: user._id,
+    name: user.name,
+    role: user.role,
+    classId: user.classId,
+    subjectIds: user.subjectIds,
+    classIds: user.classIds,
+    mustChangePassword: !!user.mustChangePassword
+  });
 }

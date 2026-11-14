@@ -1,6 +1,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
+import { classesForUser } from "../utils/teacherClasses";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useRolePath } from "../hooks/useRolePath";
@@ -44,9 +45,10 @@ export default function Curriculum() {
   useEffect(() => {
     (async () => {
       const [c, s] = await Promise.all([api.get("/classes"), api.get("/subjects")]);
-      setClasses(c.data);
+      const mine = classesForUser(user, c.data);
+      setClasses(mine);
       setSubjects(s.data);
-      if (c.data[0]) setClassId(c.data[0]._id);
+      if (mine[0]) setClassId(mine[0]._id);
       await loadItems();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

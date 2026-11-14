@@ -19,6 +19,7 @@ export interface AppUser {
   role: "superadmin" | "admin" | "teacher" | "student";
   classId?: string;
   subjectIds?: string[];
+  classIds?: string[]; // teachers: the classes they teach
   createdAt: string;
 }
 

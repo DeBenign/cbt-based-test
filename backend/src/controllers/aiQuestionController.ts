@@ -15,12 +15,13 @@ import QuestionReport from "../models/QuestionReport";
 import { summariseGeneration, validateReport } from "../services/aiHistory";
 import { schoolAllowance, recordUsage, limitMessage } from "../services/aiUsage";
 import { logActivity } from "../utils/activity";
+import { loadTeacherScope, denyReason, scopeFilter } from "../utils/teacherScope";
 
 const MAX_PER_REQUEST = 15;
 
-async function ownedSubjectIds(userId: string): Promise<string[]> {
-  const t = await User.findById(userId).select("subjectIds");
-  return (t?.subjectIds || []).map((id) => id.toString());
+// A teacher may only touch questions in a subject AND class assigned to them.
+async function scopeOf(userId: string) {
+  return loadTeacherScope(userId);
 }
 
 // Existing question wording for this class and subject (drafts and approved), used to avoid repeats.
@@ -77,9 +78,8 @@ export async function generateDraftQuestions(req: AuthedRequest, res: Response) 
   const curriculum = await Curriculum.findOne({ _id: curriculumId, schoolId: req.user!.schoolId });
   if (!curriculum) return res.status(404).json({ error: "Curriculum not found." });
 
-  if (!(await ownedSubjectIds(req.user!.userId)).includes(curriculum.subjectId.toString())) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const denied = denyReason(await scopeOf(req.user!.userId), curriculum.subjectId, curriculum.classId);
+  if (denied) return res.status(403).json({ error: denied });
 
   const [subject, cls] = await Promise.all([Subject.findById(curriculum.subjectId), Class.findById(curriculum.classId)]);
 
@@ -183,9 +183,9 @@ export async function approveDrafts(req: AuthedRequest, res: Response) {
   const { ids } = req.body as { ids?: string[] };
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No questions selected." });
 
-  const subjectIds = await ownedSubjectIds(req.user!.userId);
+  const mine = scopeFilter(await scopeOf(req.user!.userId));
   const result = await Question.updateMany(
-    { _id: { $in: ids }, schoolId: req.user!.schoolId, reviewStatus: "draft", subjectId: { $in: subjectIds } },
+    { _id: { $in: ids }, schoolId: req.user!.schoolId, reviewStatus: "draft", ...mine },
     { $set: { reviewStatus: "approved" } }
   );
 
@@ -203,9 +203,8 @@ export async function approveDrafts(req: AuthedRequest, res: Response) {
 export async function regenerateDraft(req: AuthedRequest, res: Response) {
   const draft = await Question.findOne({ _id: req.params.id, schoolId: req.user!.schoolId, reviewStatus: "draft", source: "ai" });
   if (!draft) return res.status(404).json({ error: "Draft not found." });
-  if (!(await ownedSubjectIds(req.user!.userId)).includes(draft.subjectId.toString())) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const deniedDraft = denyReason(await scopeOf(req.user!.userId), draft.subjectId, draft.classId);
+  if (deniedDraft) return res.status(403).json({ error: deniedDraft });
   if (!draft.curriculumId) return res.status(400).json({ error: "This draft isn't linked to a curriculum, so it can't be regenerated." });
 
   const curriculum = await Curriculum.findOne({ _id: draft.curriculumId, schoolId: req.user!.schoolId });
@@ -279,9 +278,9 @@ export async function discardDrafts(req: AuthedRequest, res: Response) {
   const { ids } = req.body as { ids?: string[] };
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No drafts selected." });
 
-  const subjectIds = await ownedSubjectIds(req.user!.userId);
+  const mine = scopeFilter(await scopeOf(req.user!.userId));
   const result = await Question.deleteMany({
-    _id: { $in: ids }, schoolId: req.user!.schoolId, reviewStatus: "draft", subjectId: { $in: subjectIds }
+    _id: { $in: ids }, schoolId: req.user!.schoolId, reviewStatus: "draft", ...mine
   });
 
   await logActivity(req, {
@@ -337,9 +336,8 @@ export async function getAiGeneration(req: AuthedRequest, res: Response) {
 export async function reportQuestion(req: AuthedRequest, res: Response) {
   const q = await Question.findOne({ _id: req.params.id, schoolId: req.user!.schoolId, source: "ai" });
   if (!q) return res.status(404).json({ error: "AI question not found." });
-  if (!(await ownedSubjectIds(req.user!.userId)).includes(q.subjectId.toString())) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const deniedQ = denyReason(await scopeOf(req.user!.userId), q.subjectId, q.classId);
+  if (deniedQ) return res.status(403).json({ error: deniedQ });
 
   const v = validateReport(req.body);
   if (!v.ok) return res.status(400).json({ error: v.error });

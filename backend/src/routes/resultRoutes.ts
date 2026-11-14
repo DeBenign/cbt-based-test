@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/requireRole";
 import { asyncHandler } from "../middleware/asyncHandler";
+import { teacherExamGuard } from "../middleware/teacherExamGuard";
 import {
   getMyResult,
   getExamResults,
@@ -11,6 +12,7 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.param("examId", teacherExamGuard);
 
 router.get("/mine/:examId", requireRole("student"), asyncHandler(getMyResult));
 router.get("/exam/:examId", requireRole("teacher", "admin"), asyncHandler(getExamResults));

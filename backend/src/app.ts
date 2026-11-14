@@ -47,6 +47,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({
+  limit: "2mb", // a whole question sheet is vetted in one request
   verify: (req, _res, buf) => {
     (req as any).rawBody = buf.toString("utf8");
   }

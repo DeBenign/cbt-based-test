@@ -18,6 +18,7 @@ interface BulkRow {
   email?: string;
   class?: string;
   subjects?: string;
+  classes?: string; // teachers: the classes they teach, e.g. "JSS 1; JSS 2"
 }
 
 interface RowResult {
@@ -110,6 +111,17 @@ export async function bulkCreateUsers(req: AuthedRequest, res: Response) {
       subjectIds = names.map((n) => subjectByName.get(n.toLowerCase())!._id);
     }
 
+    let classIds: any[] | undefined;
+    if (roleRaw === "teacher") {
+      const names = (row.classes || "").split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
+      const missing = names.filter((n) => !classByName.has(n.toLowerCase()));
+      if (missing.length > 0) {
+        result.reason = `Unknown class(es): ${missing.join(", ")}. They must match a class in Setup exactly.`;
+        continue;
+      }
+      classIds = names.map((n) => classByName.get(n.toLowerCase())!._id);
+    }
+
     if (!allowDuplicates) {
       const dupFilter: Record<string, unknown> = {
         schoolId,
@@ -143,6 +155,7 @@ export async function bulkCreateUsers(req: AuthedRequest, res: Response) {
         role: roleRaw,
         classId,
         subjectIds,
+        classIds,
         mustChangePassword: true
       }
     });

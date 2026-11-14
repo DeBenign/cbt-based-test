@@ -1,19 +1,19 @@
 import { Response } from "express";
 import { AuthedRequest } from "../middleware/auth";
 import Question from "../models/Question";
-import User from "../models/User";
+import { loadTeacherScope, denyReason, scopeFilter } from "../utils/teacherScope";
 
-async function teacherOwnsSubject(userId: string, subjectId: string): Promise<boolean> {
-  const teacher = await User.findById(userId).select("subjectIds");
-  return !!teacher?.subjectIds?.some((id) => id.toString() === subjectId);
+// Teachers only work in the subjects AND classes assigned to them. Returns the reason, or null if allowed.
+async function teacherDenied(req: AuthedRequest, subjectId: unknown, classId: unknown): Promise<string | null> {
+  if (req.user!.role !== "teacher") return null;
+  return denyReason(await loadTeacherScope(req.user!.userId), subjectId, classId);
 }
 
 export async function createQuestion(req: AuthedRequest, res: Response) {
   const { subjectId, classId, topic, difficulty, type, questionText, options, correctAnswerText, marks, curriculumTag } = req.body;
 
-  if (req.user!.role === "teacher" && !(await teacherOwnsSubject(req.user!.userId, subjectId))) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const denied = await teacherDenied(req, subjectId, classId);
+  if (denied) return res.status(403).json({ error: denied });
 
   const questionType = type === "theory" ? "theory" : "mcq";
 
@@ -52,7 +52,18 @@ export async function listQuestions(req: AuthedRequest, res: Response) {
   if (difficulty) filter.difficulty = difficulty;
   if (type) filter.type = type;
 
-  const questions = await Question.find(filter).sort({ createdAt: -1 });
+  // A teacher only ever sees the bank for their own subjects and classes.
+  if (req.user!.role === "teacher") {
+    const scope = await loadTeacherScope(req.user!.userId);
+    const allowed = scopeFilter(scope);
+    const wantsSubject = subjectId ? scope.subjectIds.includes(String(subjectId)) : true;
+    const wantsClass = classId ? scope.classIds.includes(String(classId)) : true;
+    if (!wantsSubject || !wantsClass) return res.json([]);
+    if (!subjectId) filter.subjectId = allowed.subjectId;
+    if (!classId) filter.classId = allowed.classId;
+  }
+
+  const questions = await Question.find(filter).sort({ createdAt: -1 }).lean();
   res.json(questions);
 }
 
@@ -60,9 +71,8 @@ export async function updateQuestion(req: AuthedRequest, res: Response) {
   const existing = await Question.findOne({ _id: req.params.id, schoolId: req.user!.schoolId });
   if (!existing) return res.status(404).json({ error: "Question not found" });
 
-  if (req.user!.role === "teacher" && !(await teacherOwnsSubject(req.user!.userId, existing.subjectId.toString()))) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const denied = await teacherDenied(req, existing.subjectId, existing.classId);
+  if (denied) return res.status(403).json({ error: denied });
 
   // Only editable content fields -- never schoolId, createdBy, reviewStatus etc.
   const allowed = ["topic", "difficulty", "questionText", "imageUrl", "options", "correctAnswerText", "marks", "curriculumTag"];
@@ -85,9 +95,8 @@ export async function deleteQuestion(req: AuthedRequest, res: Response) {
   const existing = await Question.findOne({ _id: req.params.id, schoolId: req.user!.schoolId });
   if (!existing) return res.status(404).json({ error: "Question not found" });
 
-  if (req.user!.role === "teacher" && !(await teacherOwnsSubject(req.user!.userId, existing.subjectId.toString()))) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const denied = await teacherDenied(req, existing.subjectId, existing.classId);
+  if (denied) return res.status(403).json({ error: denied });
 
   await existing.deleteOne();
   res.status(204).send();

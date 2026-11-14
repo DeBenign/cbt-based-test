@@ -2,10 +2,12 @@
 // Pure functions: no database, easy to test. The controller feeds them the
 // school's subjects/classes and the teacher's allowed subjects.
 
-import { isNearDuplicate } from "./questionDedupe";
+import { DedupeIndex } from "./questionDedupe";
 
-// 50 rows per request keeps the JSON body well under Express's 100 kB default.
+// Saving is done in small groups so one request stays quick on a serverless function.
 export const MAX_IMPORT_BATCH = 50;
+// Checking (nothing is saved) can take a whole sheet at once, so repeats inside the file are caught.
+export const MAX_CHECK_BATCH = 500;
 export const OPTION_LETTERS = ["A", "B", "C", "D", "E"] as const;
 
 export interface ImportRow {
@@ -30,6 +32,10 @@ export interface ImportContext {
   subjects: Map<string, { id: string; name: string; classIds: string[] }>; // key: lower-case name
   classes: Map<string, { id: string; name: string }>; // key: lower-case name
   allowedSubjectIds: Set<string> | null; // null = no restriction
+  allowedClassIds: Set<string> | null; // null = no restriction (teachers only teach the classes assigned to them)
+  // What the teacher chose on the import screen. Blank subject/class cells inherit it,
+  // and a row that names a different one is flagged instead of landing in the wrong place.
+  target?: { subjectId?: string; subjectName?: string; classId?: string; className?: string };
 }
 
 export interface ImportQuestion {
@@ -87,18 +93,27 @@ export function checkRow(row: ImportRow, ctx: ImportContext): RowCheck {
   const questionText = clean(row.question);
   if (!questionText) return { ok: false, reason: "Question text is missing." };
 
-  const subjectName = clean(row.subject);
+  const subjectName = clean(row.subject) || ctx.target?.subjectName || "";
   if (!subjectName) return { ok: false, reason: "Subject is missing." };
   const subject = ctx.subjects.get(key(subjectName));
   if (!subject) return { ok: false, reason: `Subject "${subjectName}" doesn't exist. Ask the admin to create it in Setup.` };
   if (ctx.allowedSubjectIds && !ctx.allowedSubjectIds.has(subject.id)) {
     return { ok: false, reason: `You're not assigned to ${subject.name}.` };
   }
+  if (ctx.target?.subjectId && subject.id !== ctx.target.subjectId) {
+    return { ok: false, reason: `This row is for ${subject.name}, but you're importing into ${ctx.target.subjectName}.` };
+  }
 
-  const className = clean(row.class);
+  const className = clean(row.class) || ctx.target?.className || "";
   if (!className) return { ok: false, reason: "Class is missing." };
   const cls = ctx.classes.get(key(className));
   if (!cls) return { ok: false, reason: `Class "${className}" doesn't exist. It must match a class in Setup exactly.` };
+  if (ctx.allowedClassIds && !ctx.allowedClassIds.has(cls.id)) {
+    return { ok: false, reason: `You're not assigned to ${cls.name}. Ask your school admin to add it to your classes.` };
+  }
+  if (ctx.target?.classId && cls.id !== ctx.target.classId) {
+    return { ok: false, reason: `This row is for ${cls.name}, but you're importing into ${ctx.target.className}. Fix the class in the file, or pick ${cls.name} above.` };
+  }
   if (!subject.classIds.includes(cls.id)) {
     return { ok: false, reason: `${subject.name} isn't linked to ${cls.name} in Setup.` };
   }
@@ -147,19 +162,25 @@ export function checkRow(row: ImportRow, ctx: ImportContext): RowCheck {
   };
 }
 
+export type DuplicateFlag = null | { kind: "bank" | "file"; match: string };
+
 // Flags rows that repeat the bank or an earlier row in the same file.
 // `existing` maps "subjectId:classId" to the question texts already in the bank.
 export function findDuplicates(
   items: { subjectId: string; classId: string; questionText: string }[],
   existing: Map<string, string[]>
-): (null | "bank" | "file")[] {
-  const seen = new Map<string, string[]>();
+): DuplicateFlag[] {
+  const bank = new Map<string, DedupeIndex>();
+  const file = new Map<string, DedupeIndex>();
   return items.map((item) => {
     const k = `${item.subjectId}:${item.classId}`;
-    if ((existing.get(k) || []).some((t) => isNearDuplicate(item.questionText, t))) return "bank";
-    const earlier = seen.get(k) || [];
-    if (earlier.some((t) => isNearDuplicate(item.questionText, t))) return "file";
-    seen.set(k, [...earlier, item.questionText]);
+    if (!bank.has(k)) bank.set(k, new DedupeIndex(existing.get(k) || []));
+    if (!file.has(k)) file.set(k, new DedupeIndex());
+    const inBank = bank.get(k)!.find(item.questionText);
+    if (inBank) return { kind: "bank", match: inBank };
+    const inFile = file.get(k)!.find(item.questionText);
+    if (inFile) return { kind: "file", match: inFile };
+    file.get(k)!.add(item.questionText);
     return null;
   });
 }

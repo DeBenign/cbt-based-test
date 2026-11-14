@@ -7,6 +7,7 @@ import Class from "../models/Class";
 import Subject from "../models/Subject";
 import Remark from "../models/Remark";
 import { loadExamData } from "../services/analyticsData";
+import { loadTeacherScope, denyReason } from "../utils/teacherScope";
 import { isUnlocked } from "../utils/resultsGate";
 import { mean, summariseStudent, topicAccuracy, ExamPoint } from "../services/analytics";
 import { buildSubjectRemark, buildOverallRemark, RemarkFacts } from "../services/remarkText";
@@ -16,9 +17,9 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const firstName = (full: string) => full.trim().split(/\s+/)[0] || full;
 const MAX_TEXT = 1500;
 
-async function teacherSubjectIds(userId: string): Promise<string[]> {
-  const u = await User.findById(userId).select("subjectIds");
-  return (u?.subjectIds ?? []).map(String);
+// Subject teachers only handle remarks for their own subjects AND classes.
+async function teacherScopeOf(userId: string) {
+  return loadTeacherScope(userId);
 }
 
 // Subject teachers write subject remarks; the school admin writes the overall remark. Nobody writes the other's.
@@ -83,7 +84,10 @@ async function authorise(req: AuthedRequest, res: Response, classId?: string, su
   if (!classId || !isValidObjectId(classId) || (subjectId && !isValidObjectId(subjectId))) { res.status(400).json({ error: "Choose a class (and a subject, for teachers)." }); return null; }
   const scope = scopeOf(req, subjectId);
   if (scope.error) { res.status(400).json({ error: scope.error }); return null; }
-  if (scope.kind === "subject" && !(await teacherSubjectIds(req.user!.userId)).includes(subjectId!)) { res.status(403).json({ error: "You're not assigned to this subject." }); return null; }
+  if (scope.kind === "subject") {
+    const denied = denyReason(await teacherScopeOf(req.user!.userId), subjectId, classId);
+    if (denied) { res.status(403).json({ error: denied }); return null; }
+  }
   const cls = await Class.findOne({ _id: classId, schoolId: req.user!.schoolId }).select("name");
   if (!cls) { res.status(404).json({ error: "Class not found." }); return null; }
   if (subjectId && !(await Subject.findOne({ _id: subjectId, schoolId: req.user!.schoolId }).select("name"))) { res.status(404).json({ error: "Subject not found." }); return null; }
@@ -168,7 +172,7 @@ export async function editRemark(req: AuthedRequest, res: Response) {
 
 async function mayTouch(req: AuthedRequest, review: any): Promise<boolean> {
   if (req.user!.role === "admin") return review.kind === "overall";
-  return review.kind === "subject" && !!review.subjectId && (await teacherSubjectIds(req.user!.userId)).includes(String(review.subjectId));
+  return review.kind === "subject" && !!review.subjectId && !denyReason(await teacherScopeOf(req.user!.userId), review.subjectId, review.classId);
 }
 
 // ---- release (or withdraw) remarks so students can (or can no longer) see them -----------------------------
@@ -178,7 +182,12 @@ export async function releaseRemarks(req: AuthedRequest, res: Response) {
 
   const filter: Record<string, unknown> = { _id: { $in: ids }, schoolId: req.user!.schoolId };
   if (req.user!.role === "admin") filter.kind = "overall";
-  else { filter.kind = "subject"; filter.subjectId = { $in: await teacherSubjectIds(req.user!.userId) }; }
+  else {
+    const mine = await teacherScopeOf(req.user!.userId);
+    filter.kind = "subject";
+    filter.subjectId = { $in: mine.subjectIds };
+    filter.classId = { $in: mine.classIds };
+  }
 
   const update = release === false ? { $set: { status: "draft" }, $unset: { releasedAt: 1 } } : { $set: { status: "released", releasedAt: new Date() } };
   const result = await Remark.updateMany(filter, update);

@@ -4,16 +4,14 @@ import { AuthedRequest } from "../middleware/auth";
 import Exam from "../models/Exam";
 import Question from "../models/Question";
 import User from "../models/User";
+import { loadTeacherScope, denyReason } from "../utils/teacherScope";
 
 export async function createExam(req: AuthedRequest, res: Response) {
   const { subjectId, classId, title, duration, startTime, endTime, randomizeQuestions, randomizeOptions, lockdownRequired } = req.body;
 
   if (req.user!.role === "teacher") {
-    const teacher = await User.findById(req.user!.userId).select("subjectIds");
-    const owns = teacher?.subjectIds?.some((id) => id.toString() === subjectId);
-    if (!owns) {
-      return res.status(403).json({ error: "You're not assigned to this subject." });
-    }
+    const denied = denyReason(await loadTeacherScope(req.user!.userId), subjectId, classId);
+    if (denied) return res.status(403).json({ error: denied });
   }
 
   const exam = await Exam.create({
@@ -53,6 +51,13 @@ export async function listExams(req: AuthedRequest, res: Response) {
   } else {
     if (classId) filter.classId = classId;
     if (status) filter.status = status;
+    if (req.user!.role === "teacher") {
+      // Teachers only see exams in their own classes (and subjects).
+      const scope = await loadTeacherScope(req.user!.userId);
+      if (classId && !scope.classIds.includes(String(classId))) return res.json([]);
+      if (!classId) filter.classId = { $in: scope.classIds };
+      filter.subjectId = { $in: scope.subjectIds };
+    }
   }
 
    await Exam.updateMany(
@@ -60,7 +65,7 @@ export async function listExams(req: AuthedRequest, res: Response) {
     { $set: { status: "closed" } }
   );
 
-  const exams = await Exam.find(filter).sort({ startTime: 1 });
+  const exams = await Exam.find(filter).sort({ startTime: 1 }).lean();
   res.json(exams);
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import api from "../services/api";
+import { classesForUser } from "../utils/teacherClasses";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useRolePath } from "../hooks/useRolePath";
@@ -206,7 +207,8 @@ export default function AIQuestions() {
   useEffect(() => {
     (async () => {
       const [c, s, cur] = await Promise.all([api.get("/classes"), api.get("/subjects"), api.get("/curriculum")]);
-      setClasses(c.data);
+      const mine = classesForUser(user, c.data);
+      setClasses(mine);
       setSubjects(s.data);
       setCurricula(cur.data);
       // Coming from AI history with "Use these settings": restore that run's choices.
@@ -222,7 +224,7 @@ export default function AIQuestions() {
       }
       const first = wanted ?? (cur.data as CurriculumItem[])[0];
       if (first) { setClassId(first.classId); setCurriculumId(first._id); }
-      else if (c.data[0]) setClassId(c.data[0]._id);
+      else if (mine[0]) setClassId(mine[0]._id);
       await Promise.all([loadDrafts(), loadUsage()]);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

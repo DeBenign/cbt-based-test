@@ -20,6 +20,20 @@ function idSuffix(id?: string) {
   return id ? id.slice(-6) : "—";
 }
 
+function CheckList({ items, selected, onChange }: { items: { _id: string; name: string }[]; selected: string[]; onChange: (ids: string[]) => void }) {
+  const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.map((it) => (
+        <label key={it._id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, padding: "4px 10px", border: "0.5px solid var(--border)", borderRadius: 14, background: selected.includes(it._id) ? "var(--accent-soft, #eef1ff)" : "transparent", cursor: "pointer" }}>
+          <input type="checkbox" checked={selected.includes(it._id)} onChange={() => toggle(it._id)} style={{ width: "auto", margin: 0 }} />
+          {it.name}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export default function UserManagement() {
   const rolePath = useRolePath();
   const confirm = useConfirm();
@@ -33,6 +47,10 @@ export default function UserManagement() {
   const [role, setRole] = useState<"teacher" | "student">("student");
   const [classId, setClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [teacherSubjects, setTeacherSubjects] = useState<string[]>([]);
+  const [teacherClasses, setTeacherClasses] = useState<string[]>([]);
+  const [assignDrafts, setAssignDrafts] = useState<Record<string, { subjectIds: string[]; classIds: string[] }>>({});
+  const [assignMessages, setAssignMessages] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -96,12 +114,15 @@ export default function UserManagement() {
         password,
         role,
         classId: role === "student" ? classId : undefined,
-        subjectIds: role === "teacher" && subjectId ? [subjectId] : undefined
+        subjectIds: role === "teacher" ? teacherSubjects : undefined,
+        classIds: role === "teacher" ? teacherClasses : undefined
       });
       setSuccess(`${role === "teacher" ? "Teacher" : "Student"} account created for ${email}.`);
       setName("");
       setEmail("");
       setPassword("");
+      setTeacherSubjects([]);
+      setTeacherClasses([]);
       await loadUsers();
     } catch (err: any) {
       setError(err.response?.data?.error || "Couldn't create the account.");
@@ -116,6 +137,17 @@ export default function UserManagement() {
       await loadUsers();
     } catch (err: any) {
       setError(err.response?.data?.error || "Couldn't delete the account.");
+    }
+  }
+
+  async function handleSaveAssignments(id: string, draft: { subjectIds: string[]; classIds: string[] }) {
+    try {
+      const res = await api.put(`/users/${id}/assignments`, draft);
+      setUsers((prev) => prev.map((u) => (u._id === id ? { ...u, subjectIds: res.data.subjectIds, classIds: res.data.classIds } : u)));
+      setAssignDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setAssignMessages((prev) => ({ ...prev, [id]: "Saved. It applies the next time they open the app." }));
+    } catch (err: any) {
+      setAssignMessages((prev) => ({ ...prev, [id]: err.response?.data?.error || "Couldn't save." }));
     }
   }
 
@@ -233,16 +265,19 @@ export default function UserManagement() {
               </div>
             )}
             {role === "teacher" && (
-              <div style={{ marginBottom: 10 }}>
-                <label>Subject (optional)</label>
-                <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ width: "100%" }}>
-                  {subjects.map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {s.name} (id:{idSuffix(s._id)})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div style={{ marginBottom: 10 }}>
+                  <label>Subjects they teach</label>
+                  <CheckList items={subjects} selected={teacherSubjects} onChange={setTeacherSubjects} />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label>Classes they teach</label>
+                  <CheckList items={classes} selected={teacherClasses} onChange={setTeacherClasses} />
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, marginBottom: 0 }}>
+                    A teacher can only see and change questions, exams, results and analytics for the subjects and classes ticked here.
+                  </p>
+                </div>
+              </>
             )}
             {error && <p style={{ color: "var(--text-danger)", fontSize: 13 }}>{error}</p>}
             {success && <p style={{ color: "var(--text-success)", fontSize: 13 }}>{success}</p>}
@@ -276,7 +311,8 @@ export default function UserManagement() {
       {users.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No users match.</p>}
       {users.map((u) => {
         const cls = u.classId ? classById[u.classId] : undefined;
-        const subj = u.subjectIds?.[0] ? subjectById[u.subjectIds[0]] : undefined;
+        const teacherSubjectNames = (u.subjectIds || []).map((id) => subjectById[id]?.name).filter(Boolean);
+        const teacherClassNames = (u.classIds || []).map((id) => classById[id]?.name).filter(Boolean);
         const isExpanded = expandedId === u._id;
         return (
           <Card key={u._id} style={{ marginBottom: 8 }}>
@@ -294,10 +330,15 @@ export default function UserManagement() {
                     Class: {cls ? `${cls.name} (id:${idSuffix(cls._id)})` : "none assigned"}
                   </p>
                 )}
-                {u.role === "teacher" && subj && (
-                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 0 }}>
-                    Subject: {subj.name} (id:{idSuffix(subj._id)})
-                  </p>
+                {u.role === "teacher" && (
+                  <>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>
+                      Subjects: {teacherSubjectNames.length ? teacherSubjectNames.join(", ") : "none"}
+                    </p>
+                    <p style={{ fontSize: 12, color: teacherClassNames.length ? "var(--text-muted)" : "var(--text-danger)", marginBottom: 0 }}>
+                      Classes: {teacherClassNames.length ? teacherClassNames.join(", ") : "none assigned — they can't work in any class yet"}
+                    </p>
+                  </>
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -321,6 +362,20 @@ export default function UserManagement() {
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--border)", fontSize: 12, color: "var(--text-secondary)" }}>
                 <p>User ID: {u._id}</p>
                 <p>Created: {new Date(u.createdAt).toLocaleString()}</p>
+
+                {u.role === "teacher" && (() => {
+                  const draft = assignDrafts[u._id] || { subjectIds: u.subjectIds || [], classIds: u.classIds || [] };
+                  return (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
+                      <p style={{ fontWeight: 500, marginBottom: 6 }}>Subjects and classes</p>
+                      <CheckList items={subjects} selected={draft.subjectIds} onChange={(ids) => setAssignDrafts((p) => ({ ...p, [u._id]: { ...draft, subjectIds: ids } }))} />
+                      <div style={{ height: 8 }} />
+                      <CheckList items={classes} selected={draft.classIds} onChange={(ids) => setAssignDrafts((p) => ({ ...p, [u._id]: { ...draft, classIds: ids } }))} />
+                      <button type="button" onClick={() => handleSaveAssignments(u._id, draft)} style={{ marginTop: 10, padding: "3px 10px", fontSize: 12 }}>Save</button>
+                      {assignMessages[u._id] && <p style={{ marginTop: 6, marginBottom: 0 }}>{assignMessages[u._id]}</p>}
+                    </div>
+                  );
+                })()}
 
                 {u.role !== "admin" && (
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--border)" }}>

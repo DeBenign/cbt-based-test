@@ -3,40 +3,61 @@ import { AuthedRequest } from "../middleware/auth";
 import Question from "../models/Question";
 import Subject from "../models/Subject";
 import Class from "../models/Class";
-import User from "../models/User";
 import { logActivity } from "../utils/activity";
-import { MAX_IMPORT_BATCH, ImportRow, ImportContext, ImportQuestion, checkRow, findDuplicates } from "../services/questionImport";
+import { loadTeacherScope } from "../utils/teacherScope";
+import {
+  MAX_IMPORT_BATCH, MAX_CHECK_BATCH, ImportRow, ImportContext, ImportQuestion, checkRow, findDuplicates
+} from "../services/questionImport";
 
 interface RowResult {
   rowNumber: number;
   question: string;
   subject?: string;
   className?: string;
-  status: "created" | "skipped" | "error";
+  subjectId?: string;
+  classId?: string;
+  // ready = passed every check (check mode); created = saved (import mode)
+  status: "ready" | "created" | "skipped" | "error";
   reason?: string;
 }
 
-// POST /teacher/questions/import  { rows: ImportRow[], allowDuplicates?: boolean }
-// Valid rows are saved; bad rows are reported and never block the good ones.
-// Re-uploading the same file is safe: rows already saved come back as duplicates.
+// POST /teacher/questions/import
+//   { rows, dryRun?, targetSubjectId?, targetClassId?, allowDuplicates? }
+// dryRun:true  -> vets every row (rules, permissions, duplicates against the bank and the file) and saves NOTHING.
+// dryRun:false -> saves the rows that pass. Duplicates of anything already in the bank are skipped.
+// Bad rows are reported and never block the good ones; re-sending a file is safe.
 export async function importQuestions(req: AuthedRequest, res: Response) {
-  const { rows, allowDuplicates } = req.body as { rows: ImportRow[]; allowDuplicates?: boolean };
+  const { rows, dryRun, allowDuplicates, targetSubjectId, targetClassId } = req.body as {
+    rows: ImportRow[]; dryRun?: boolean; allowDuplicates?: boolean; targetSubjectId?: string; targetClassId?: string;
+  };
 
+  const limit = dryRun ? MAX_CHECK_BATCH : MAX_IMPORT_BATCH;
   if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ error: "No rows to import." });
-  if (rows.length > MAX_IMPORT_BATCH) return res.status(400).json({ error: `Send at most ${MAX_IMPORT_BATCH} rows per request.` });
+  if (rows.length > limit) return res.status(400).json({ error: `Send at most ${limit} rows per request.` });
 
   const schoolId = req.user!.schoolId;
-  const [subjects, classes, teacher] = await Promise.all([
-    Subject.find({ schoolId }),
-    Class.find({ schoolId }),
-    User.findById(req.user!.userId).select("subjectIds")
+  const [subjects, classes, scope] = await Promise.all([
+    Subject.find({ schoolId }).lean(),
+    Class.find({ schoolId }).lean(),
+    loadTeacherScope(req.user!.userId)
   ]);
 
+  const subjectList = subjects.map((s) => ({ id: String(s._id), name: s.name, classIds: (s.classIds || []).map(String) }));
+  const classList = classes.map((c) => ({ id: String(c._id), name: c.name }));
+
   const ctx: ImportContext = {
-    subjects: new Map(subjects.map((s) => [s.name.trim().toLowerCase(), { id: s._id.toString(), name: s.name, classIds: s.classIds.map(String) }])),
-    classes: new Map(classes.map((c) => [c.name.trim().toLowerCase(), { id: c._id.toString(), name: c.name }])),
-    allowedSubjectIds: new Set((teacher?.subjectIds || []).map(String))
+    subjects: new Map(subjectList.map((s) => [s.name.trim().toLowerCase(), s])),
+    classes: new Map(classList.map((c) => [c.name.trim().toLowerCase(), c])),
+    allowedSubjectIds: new Set(scope.subjectIds),
+    allowedClassIds: new Set(scope.classIds)
   };
+
+  if (targetSubjectId || targetClassId) {
+    const s = subjectList.find((x) => x.id === targetSubjectId);
+    const c = classList.find((x) => x.id === targetClassId);
+    if ((targetSubjectId && !s) || (targetClassId && !c)) return res.status(400).json({ error: "The subject or class you chose doesn't exist." });
+    ctx.target = { subjectId: s?.id, subjectName: s?.name, classId: c?.id, className: c?.name };
+  }
 
   const results: RowResult[] = [];
   const valid: { result: RowResult; question: ImportQuestion }[] = [];
@@ -50,10 +71,14 @@ export async function importQuestions(req: AuthedRequest, res: Response) {
     if (!check.ok) { result.reason = check.reason; return; }
     result.subject = check.subjectName;
     result.className = check.className;
+    result.subjectId = check.question.subjectId;
+    result.classId = check.question.classId;
     valid.push({ result, question: check.question });
   });
 
-  let toSave = valid;
+  // Duplicates: anything already in the bank for the same subject + class (drafts included),
+  // and any row that repeats an earlier row in this file.
+  let passing = valid;
   if (!allowDuplicates && valid.length > 0) {
     const existingDocs = await Question.find({
       schoolId,
@@ -64,37 +89,46 @@ export async function importQuestions(req: AuthedRequest, res: Response) {
     const existing = new Map<string, string[]>();
     for (const d of existingDocs) {
       const k = `${d.subjectId}:${d.classId}`;
-      existing.set(k, [...(existing.get(k) || []), d.questionText]);
+      const list = existing.get(k);
+      if (list) list.push(d.questionText); else existing.set(k, [d.questionText]);
     }
 
     const flags = findDuplicates(valid.map((v) => v.question), existing);
-    toSave = [];
+    passing = [];
     valid.forEach((v, i) => {
-      if (flags[i]) {
+      const f = flags[i];
+      if (f) {
+        const preview = f.match.length > 70 ? f.match.slice(0, 70) + "…" : f.match;
         v.result.status = "skipped";
-        v.result.reason = flags[i] === "bank" ? "Already in the question bank." : "Repeats an earlier row in this file.";
+        v.result.reason = f.kind === "bank"
+          ? `Already in the question bank: "${preview}"`
+          : `Repeats an earlier row in this file: "${preview}"`;
       } else {
-        toSave.push(v);
+        passing.push(v);
       }
     });
   }
 
-  if (toSave.length > 0) {
+  if (dryRun) {
+    passing.forEach((v) => { v.result.status = "ready"; });
+  } else if (passing.length > 0) {
     await Question.insertMany(
-      toSave.map((v) => ({ ...v.question, schoolId, createdBy: req.user!.userId, source: "manual", reviewStatus: "approved" }))
+      passing.map((v) => ({ ...v.question, schoolId, createdBy: req.user!.userId, source: "manual", reviewStatus: "approved" }))
     );
-    toSave.forEach((v) => { v.result.status = "created"; });
+    passing.forEach((v) => { v.result.status = "created"; });
     await logActivity(req, {
       action: "questions.import",
-      summary: `Imported ${toSave.length} question(s) from a spreadsheet`,
+      summary: `Imported ${passing.length} question(s) from a spreadsheet`,
       entityType: "question",
-      meta: { created: toSave.length, rows: rows.length }
+      meta: { created: passing.length, rows: rows.length }
     });
   }
 
   res.json({
+    dryRun: !!dryRun,
     results,
     summary: {
+      ready: results.filter((r) => r.status === "ready").length,
       created: results.filter((r) => r.status === "created").length,
       skipped: results.filter((r) => r.status === "skipped").length,
       errors: results.filter((r) => r.status === "error").length

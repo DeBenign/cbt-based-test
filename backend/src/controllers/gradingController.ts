@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../middleware/auth";
 import Exam from "../models/Exam";
+import { loadTeacherScope, denyReason } from "../utils/teacherScope";
 import ExamAttempt from "../models/ExamAttempt";
 import Question from "../models/Question";
 import { finalizeExpiredAttempts } from "../services/finalizeExpired";
@@ -53,6 +54,12 @@ export async function gradeAnswer(req: AuthedRequest, res: Response) {
   const { marksAwarded } = req.body as { marksAwarded: number };
   const attempt = await ExamAttempt.findById(req.params.attemptId);
   if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+
+  if (req.user!.role === "teacher") {
+    const exam = await Exam.findOne({ _id: attempt.examId, schoolId: req.user!.schoolId }).select("subjectId classId").lean();
+    const denied = exam ? denyReason(await loadTeacherScope(req.user!.userId), exam.subjectId, exam.classId) : "Exam not found";
+    if (denied) return res.status(403).json({ error: denied });
+  }
 
   const question = await Question.findOne({ _id: req.params.questionId, schoolId: req.user!.schoolId });
   if (!question || question.type !== "theory") {

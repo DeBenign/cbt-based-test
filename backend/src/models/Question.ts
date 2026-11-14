@@ -64,4 +64,8 @@ const questionSchema = new Schema<IQuestion>({
   createdAt: { type: Date, default: Date.now }
 });
 
+// The bank is always read by school + subject + class (list, auto-fill, duplicate checks).
+questionSchema.index({ schoolId: 1, subjectId: 1, classId: 1, reviewStatus: 1, createdAt: -1 });
+questionSchema.index({ schoolId: 1, createdBy: 1 });
+
 export default model<IQuestion>("Question", questionSchema);

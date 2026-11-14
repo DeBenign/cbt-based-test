@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import api from "../services/api";
 
 interface AuthUser {
   id: string;
@@ -6,6 +7,7 @@ interface AuthUser {
   role: "superadmin" | "admin" | "teacher" | "student";
   classId?: string;
   subjectIds?: string[];
+  classIds?: string[];
   mustChangePassword?: boolean;
 }
 
@@ -30,6 +32,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
+
+  // Teachers' subjects and classes can change while they are signed in (the admin edits them),
+  // and sessions saved before classes existed have none. Re-read them whenever the app opens.
+  useEffect(() => {
+    if (!user || user.role !== "teacher" || !localStorage.getItem("cbt_token")) return;
+    api.get("/auth/me").then((res) => {
+      const fresh = res.data as AuthUser;
+      setUser((u) => {
+        if (!u) return u;
+        const updated = { ...u, subjectIds: fresh.subjectIds, classIds: fresh.classIds };
+        localStorage.setItem("cbt_user", JSON.stringify(updated));
+        return updated;
+      });
+    }).catch(() => { /* offline: keep what is saved */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   function login(token: string, user: AuthUser) {
     localStorage.setItem("cbt_token", token);

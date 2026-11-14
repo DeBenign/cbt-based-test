@@ -13,6 +13,7 @@ export interface IUser extends Document {
   role: UserRole;
   classId?: Types.ObjectId;
   subjectIds?: Types.ObjectId[];
+  classIds?: Types.ObjectId[]; // teachers only: the classes they teach (empty = none, until the admin assigns them)
   createdAt: Date;
 }
 
@@ -27,7 +28,12 @@ const userSchema = new Schema<IUser>({
   role: { type: String, enum: ["superadmin", "admin", "teacher", "student"], required: true },
   classId: { type: Schema.Types.ObjectId, ref: "Class" },
   subjectIds: [{ type: Schema.Types.ObjectId, ref: "Subject" }],
+  classIds: [{ type: Schema.Types.ObjectId, ref: "Class" }],
   createdAt: { type: Date, default: Date.now }
 });
+
+// Roster, login-sheet and teacher lookups are always per school.
+userSchema.index({ schoolId: 1, role: 1, createdAt: -1 });
+userSchema.index({ schoolId: 1, classId: 1 });
 
 export default model<IUser>("User", userSchema);

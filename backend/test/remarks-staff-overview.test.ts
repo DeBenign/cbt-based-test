@@ -1,4 +1,5 @@
 import test from "node:test";
+import { clearTeacherScopeCache } from "../src/utils/teacherScope";
 import assert from "node:assert/strict";
 import Exam from "../src/models/Exam";
 import ExamAttempt from "../src/models/ExamAttempt";
@@ -14,13 +15,13 @@ import { generateRemarks, listRemarks, editRemark, releaseRemarks, getMyRemarks 
 import { buildSubjectRemark, buildOverallRemark, RemarkFacts } from "../src/services/remarkText";
 import { gradingStats, buildSignals, median } from "../src/services/staffIndicators";
 
-const q = (rows: any[]) => { const p: any = Promise.resolve(rows); p.sort = () => p; p.select = () => p; return p; };
-const one = (row: any) => { const p: any = Promise.resolve(row); p.select = () => p; return p; };
+const q = (rows: any[]) => { const p: any = Promise.resolve(rows); p.sort = () => p; p.select = () => p; p.lean = () => p; return p; };
+const one = (row: any) => { const p: any = Promise.resolve(row); p.select = () => p; p.lean = () => p; return p; };
 const day = 86_400_000;
 
 const CLASS = "64b000000000000000000001", SUBJ = "64b000000000000000000002", SCHOOL = "sch";
 const students = ["s1", "s2", "s3", "s4", "s5"].map((id, i) => ({ _id: id, name: `Student${i + 1} Surname`, classId: CLASS, schoolId: SCHOOL, role: "student" }));
-const teachers = [{ _id: "t1", name: "Mrs Teacher", subjectIds: [SUBJ], role: "teacher" }, { _id: "t2", name: "Mr Other", subjectIds: [], role: "teacher" }];
+const teachers = [{ _id: "t1", name: "Mrs Teacher", subjectIds: [SUBJ], classIds: [CLASS], role: "teacher" }, { _id: "t2", name: "Mr Other", subjectIds: [], classIds: [], role: "teacher" }];
 const questions = ["q1", "q2", "q3", "q4", "q5", "q6"].map((id, i) => ({
   _id: id, topic: i < 3 ? "Fractions" : "Decimals", type: "mcq", marks: 1, questionText: `Question ${id}`,
   options: [{ text: "right", isCorrect: true }, { text: "wrong", isCorrect: false }]
@@ -57,6 +58,7 @@ function fakeRemarks() {
 }
 
 function stub(opts: { attempts?: any[] } = {}) {
+  clearTeacherScopeCache();
   (Exam as any).find = () => q(exams);
   (ExamAttempt as any).find = () => q(opts.attempts ?? attempts);
   (Question as any).find = () => q(questions);

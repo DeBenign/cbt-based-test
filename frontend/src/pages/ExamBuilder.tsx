@@ -1,6 +1,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import api from "../services/api";
+import { classesForUser } from "../utils/teacherClasses";
 import { useAuth } from "../context/AuthContext";
 import { Subject, ClassRoom, Question } from "../types";
 import Card from "../components/Card";
@@ -48,7 +49,8 @@ export default function ExamBuilder() {
     (async () => {
       const [subRes, classRes] = await Promise.all([api.get("/subjects"), api.get("/classes")]);
       setSubjects(subRes.data);
-      setClasses(classRes.data);
+      const myClasses = classesForUser(user, classRes.data);
+      setClasses(myClasses);
 
       if (existingExamId) {
         const examRes = await api.get(`/exams/${existingExamId}`);
@@ -67,7 +69,7 @@ export default function ExamBuilder() {
           ? subRes.data.filter((s: Subject) => user.subjectIds?.includes(s._id))
           : subRes.data;
         if (ownSubjects.length > 0) setSubjectId(ownSubjects[0]._id);
-        if (classRes.data.length > 0) setClassId(classRes.data[0]._id);
+        if (myClasses.length > 0) setClassId(myClasses[0]._id);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -35,3 +35,42 @@ export function filterDuplicates<T extends { questionText: string }>(
   }
   return { kept, duplicates };
 }
+
+// Fast lookup for many comparisons. Two questions can only be near-duplicates when they
+// carry the same numbers, so texts are bucketed by their numbers and only compared inside
+// a bucket. Same rules as isNearDuplicate, without re-reading every text on every check.
+interface Signature { text: string; joined: string; sets: Set<string>; nums: string }
+
+function signatureOf(text: string): Signature | null {
+  const toks = tokens(text);
+  if (toks.length === 0) return null;
+  return { text, joined: toks.join(" "), sets: new Set(toks), nums: numbersIn(toks) };
+}
+
+export class DedupeIndex {
+  private buckets = new Map<string, Signature[]>();
+
+  constructor(texts: string[] = [], private threshold = 0.8) {
+    texts.forEach((t) => this.add(t));
+  }
+
+  add(text: string) {
+    const sig = signatureOf(text);
+    if (!sig) return;
+    const bucket = this.buckets.get(sig.nums);
+    if (bucket) bucket.push(sig); else this.buckets.set(sig.nums, [sig]);
+  }
+
+  // The existing text this one repeats, or null.
+  find(text: string): string | null {
+    const sig = signatureOf(text);
+    if (!sig) return null;
+    for (const c of this.buckets.get(sig.nums) || []) {
+      if (c.joined === sig.joined) return c.text;
+      let shared = 0;
+      sig.sets.forEach((t) => { if (c.sets.has(t)) shared++; });
+      if (shared / (sig.sets.size + c.sets.size - shared) >= this.threshold) return c.text;
+    }
+    return null;
+  }
+}

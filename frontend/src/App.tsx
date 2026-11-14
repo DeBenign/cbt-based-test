@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
@@ -6,37 +7,37 @@ import RequireRole from "./components/RequireRole";
 import RequireExactRole from "./components/RequireExactRole";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Pricing from "./pages/Pricing";
-import Privacy from "./pages/Privacy";
-import Setup from "./pages/Setup";
-import QuestionBank from "./pages/QuestionBank";
-import ExamBuilder from "./pages/ExamBuilder";
-import ExamList from "./pages/ExamList";
-import TestTaking from "./pages/TestTaking";
-import Results from "./pages/Results";
-import GradingQueue from "./pages/GradingQueue";
-import UserManagement from "./pages/UserManagement";
-import SchoolManagement from "./pages/SchoolManagement";
-import ChangePassword from "./pages/ChangePassword";
-import Billing from "./pages/Billing";
-import Receipt from "./pages/Receipt";
-import Branding from "./pages/Branding";
-import Curriculum from "./pages/Curriculum";
-import AIQuestions from "./pages/AIQuestions";
-import AIHistory from "./pages/AIHistory";
-import AIReports from "./pages/AIReports";
-import Analytics from "./pages/Analytics";
-import MyProgress from "./pages/MyProgress";
-import SchoolOverview from "./pages/SchoolOverview";
-import Remarks from "./pages/Remarks";
-import StaffIndicators from "./pages/StaffIndicators";
-import ReportCards from "./pages/ReportCards";
-import MyReportCard from "./pages/MyReportCard";
-import Activity from "./pages/Activity";
-import PersonActivity from "./pages/PersonActivity";
-import AttemptDetail from "./pages/AttemptDetail";
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Setup = lazy(() => import("./pages/Setup"));
+const QuestionBank = lazy(() => import("./pages/QuestionBank"));
+const ExamBuilder = lazy(() => import("./pages/ExamBuilder"));
+const ExamList = lazy(() => import("./pages/ExamList"));
+const TestTaking = lazy(() => import("./pages/TestTaking"));
+const Results = lazy(() => import("./pages/Results"));
+const GradingQueue = lazy(() => import("./pages/GradingQueue"));
+const UserManagement = lazy(() => import("./pages/UserManagement"));
+const SchoolManagement = lazy(() => import("./pages/SchoolManagement"));
+const ChangePassword = lazy(() => import("./pages/ChangePassword"));
+const Billing = lazy(() => import("./pages/Billing"));
+const Receipt = lazy(() => import("./pages/Receipt"));
+const Branding = lazy(() => import("./pages/Branding"));
+const Curriculum = lazy(() => import("./pages/Curriculum"));
+const AIQuestions = lazy(() => import("./pages/AIQuestions"));
+const AIHistory = lazy(() => import("./pages/AIHistory"));
+const AIReports = lazy(() => import("./pages/AIReports"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const MyProgress = lazy(() => import("./pages/MyProgress"));
+const SchoolOverview = lazy(() => import("./pages/SchoolOverview"));
+const Remarks = lazy(() => import("./pages/Remarks"));
+const StaffIndicators = lazy(() => import("./pages/StaffIndicators"));
+const ReportCards = lazy(() => import("./pages/ReportCards"));
+const MyReportCard = lazy(() => import("./pages/MyReportCard"));
+const Activity = lazy(() => import("./pages/Activity"));
+const PersonActivity = lazy(() => import("./pages/PersonActivity"));
+const AttemptDetail = lazy(() => import("./pages/AttemptDetail"));
 
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
     <AuthProvider>
       <ConfirmProvider>
         <BrowserRouter>
+          <Suspense fallback={<p style={{ padding: 24, color: "var(--text-secondary)" }}>Loading…</p>}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
@@ -99,6 +101,7 @@ export default function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </ConfirmProvider>
     </AuthProvider>

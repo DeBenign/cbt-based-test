@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/requireRole";
 import { asyncHandler } from "../middleware/asyncHandler";
+import { teacherExamGuard } from "../middleware/teacherExamGuard";
 import {
   createExam,
   getExam,
@@ -16,6 +17,7 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.param("id", teacherExamGuard);
 
 router.get("/", asyncHandler(listExams));
 router.get("/:id", asyncHandler(getExam));

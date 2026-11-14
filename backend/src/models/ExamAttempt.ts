@@ -78,5 +78,7 @@ const examAttemptSchema = new Schema<IExamAttempt>({
 // the per-exam index serves results, grading and review queries.
 examAttemptSchema.index({ status: 1, serverEndTime: 1 });
 examAttemptSchema.index({ examId: 1, status: 1 });
+// "Has this student already started?" and "my results" run on every exam open.
+examAttemptSchema.index({ studentId: 1, examId: 1 });
 
 export default model<IExamAttempt>("ExamAttempt", examAttemptSchema);

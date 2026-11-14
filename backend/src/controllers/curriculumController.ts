@@ -3,18 +3,13 @@ import { AuthedRequest } from "../middleware/auth";
 import Curriculum from "../models/Curriculum";
 import Class from "../models/Class";
 import Subject from "../models/Subject";
-import User from "../models/User";
+import { loadTeacherScope, denyReason } from "../utils/teacherScope";
 import { detectSourceType, extractText, splitIntoTopics, SourceType } from "../utils/curriculumParser";
 
-async function teacherSubjectIds(userId: string): Promise<string[]> {
-  const t = await User.findById(userId).select("subjectIds");
-  return (t?.subjectIds || []).map((id) => id.toString());
-}
-
-// Admin: any class/subject in the school. Teacher: only their own subjects.
-async function canManageSubject(req: AuthedRequest, subjectId: string): Promise<boolean> {
-  if (req.user!.role === "admin") return true;
-  return (await teacherSubjectIds(req.user!.userId)).includes(subjectId);
+// Admin: any class/subject in the school. Teacher: only their own subjects AND classes.
+async function denyManage(req: AuthedRequest, subjectId: unknown, classId: unknown): Promise<string | null> {
+  if (req.user!.role === "admin") return null;
+  return denyReason(await loadTeacherScope(req.user!.userId), subjectId, classId);
 }
 
 export async function uploadCurriculum(req: AuthedRequest, res: Response) {
@@ -36,8 +31,9 @@ export async function uploadCurriculum(req: AuthedRequest, res: Response) {
   ]);
   if (!cls) return res.status(404).json({ error: "Class not found." });
   if (!subject) return res.status(404).json({ error: "Subject not found." });
-  if (!(await canManageSubject(req, subjectId))) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
+  const denied = await denyManage(req, subjectId, classId);
+  if (denied) {
+    return res.status(403).json({ error: denied });
   }
 
   let sourceType: SourceType = "text";
@@ -86,9 +82,9 @@ export async function listCurricula(req: AuthedRequest, res: Response) {
   if (classId) filter.classId = classId;
   if (subjectId) filter.subjectId = subjectId;
   if (req.user!.role === "teacher") {
-    filter.subjectId = subjectId
-      ? { $in: (await teacherSubjectIds(req.user!.userId)).filter((id) => id === String(subjectId)) }
-      : { $in: await teacherSubjectIds(req.user!.userId) };
+    const scope = await loadTeacherScope(req.user!.userId);
+    filter.subjectId = subjectId ? { $in: scope.subjectIds.filter((id) => id === String(subjectId)) } : { $in: scope.subjectIds };
+    filter.classId = classId ? { $in: scope.classIds.filter((id) => id === String(classId)) } : { $in: scope.classIds };
   }
 
   const items = await Curriculum.find(filter).select("-topics.text").sort({ createdAt: -1 });
@@ -110,9 +106,8 @@ export async function listCurricula(req: AuthedRequest, res: Response) {
 export async function deleteCurriculum(req: AuthedRequest, res: Response) {
   const doc = await Curriculum.findOne({ _id: req.params.id, schoolId: req.user!.schoolId });
   if (!doc) return res.status(404).json({ error: "Curriculum not found." });
-  if (!(await canManageSubject(req, doc.subjectId.toString()))) {
-    return res.status(403).json({ error: "You're not assigned to this subject." });
-  }
+  const denied = await denyManage(req, doc.subjectId, doc.classId);
+  if (denied) return res.status(403).json({ error: denied });
   await doc.deleteOne();
   res.status(204).send();
 }

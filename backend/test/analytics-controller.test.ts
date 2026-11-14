@@ -1,4 +1,5 @@
 import test from "node:test";
+import { clearTeacherScopeCache } from "../src/utils/teacherScope";
 import assert from "node:assert/strict";
 import Exam from "../src/models/Exam";
 import ExamAttempt from "../src/models/ExamAttempt";
@@ -10,8 +11,8 @@ import * as finalize from "../src/services/finalizeExpired";
 import { getMyAnalytics, getClassAnalytics, listAnalyticsOptions } from "../src/controllers/analyticsController";
 
 // A thenable that also answers .sort()/.select(), like a Mongoose query.
-const q = (rows: any[]) => { const p: any = Promise.resolve(rows); p.sort = () => p; p.select = () => p; return p; };
-const one = (row: any) => { const p: any = Promise.resolve(row); p.select = () => p; return p; }; // findById / findOne
+const q = (rows: any[]) => { const p: any = Promise.resolve(rows); p.sort = () => p; p.select = () => p; p.lean = () => p; return p; };
+const one = (row: any) => { const p: any = Promise.resolve(row); p.select = () => p; p.lean = () => p; return p; }; // findById / findOne
 
 const CLASS = "64b000000000000000000001";
 const SUBJ = "64b000000000000000000002";
@@ -40,11 +41,12 @@ const attempts = [
 ];
 
 function stub() {
+  clearTeacherScopeCache();
   (Exam as any).find = () => q(exams);
   (ExamAttempt as any).find = () => q(attempts);
   (Question as any).find = () => q(questions);
   (User as any).find = () => q(students);
-  (User as any).findById = (id: string) => one(students.find((s) => s._id === id) ?? { _id: id, subjectIds: [SUBJ] });
+  (User as any).findById = (id: string) => one(students.find((s) => s._id === id) ?? { _id: id, subjectIds: [SUBJ], classIds: [CLASS] });
   (Subject as any).find = () => q([{ _id: SUBJ, name: "Mathematics" }]);
   (Subject as any).findOne = () => one({ _id: SUBJ, name: "Mathematics" });
   (Class as any).find = () => q([{ _id: CLASS, name: "Primary 5" }]);
@@ -110,7 +112,7 @@ test("class view: flags, distribution, participation and most-missed", async () 
 
 test("class view: a teacher cannot open a subject they don't teach", async () => {
   stub();
-  (User as any).findById = () => one({ subjectIds: ["someone-elses-subject"] });
+  (User as any).findById = () => one({ subjectIds: ["someone-elses-subject"], classIds: [CLASS] });
   const { code } = await run(getClassAnalytics, { user: { userId: "t2", schoolId: "sch", role: "teacher" }, query: { classId: CLASS, subjectId: SUBJ } });
   assert.equal(code, 403);
 });

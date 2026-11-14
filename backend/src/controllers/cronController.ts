@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { isValidCronAuth } from "../utils/cronAuth";
 import { finalizeExpiredAttempts } from "../services/finalizeExpired";
 import { sendExpiryReminders } from "../services/expiryReminders";
+import { backfillTeacherClasses } from "../services/backfillTeacherClasses";
 
 // Called on a schedule (see backend/vercel.json), not by a signed-in user.
 export async function runMaintenance(req: Request, res: Response) {
@@ -26,6 +27,13 @@ export async function runMaintenance(req: Request, res: Response) {
   } catch (err: any) {
     console.error("maintenance: reminders failed", err);
     report.reminders = { error: err.message || "failed" };
+  }
+
+  try {
+    report.teacherClasses = await backfillTeacherClasses();
+  } catch (err: any) {
+    console.error("maintenance: teacher class backfill failed", err);
+    report.teacherClasses = { error: err.message || "failed" };
   }
 
   res.json({ ok: true, ranAt: new Date().toISOString(), ...report });
